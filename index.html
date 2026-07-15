@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#8b5cf6">
+  <meta name="description" content="Aether Journal - A beautiful, self-hosted, local-first bullet journal and calendar.">
+  
+  <!-- Web App Manifest & PWA Tags -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <title>Aether Journal</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Sidebar / Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-circle"></div>
+        <h1>Aether</h1>
+      </div>
+      
+      <nav class="nav-menu">
+        <button id="nav-today" class="nav-btn active">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          <span>Today</span>
+        </button>
+        <button id="nav-calendar-toggle" class="nav-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21H3V3h18v18zM3 9h18M9 21V9"></path></svg>
+          <span>Calendar</span>
+        </button>
+        <button id="nav-search" class="nav-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <span>Search</span>
+        </button>
+        <button id="nav-settings" class="nav-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Settings</span>
+        </button>
+      </nav>
+      
+      <!-- Stats / Bullet Legend -->
+      <div class="sidebar-footer">
+        <div class="legend-box">
+          <h3>Legend</h3>
+          <ul>
+            <li><span class="bullet-symbol task">•</span> Task</li>
+            <li><span class="bullet-symbol completed">×</span> Completed</li>
+            <li><span class="bullet-symbol event">○</span> Event</li>
+            <li><span class="bullet-symbol note">─</span> Note</li>
+            <li><span class="bullet-symbol migrated">&gt;</span> Migrated</li>
+          </ul>
+        </div>
+        <button id="install-btn" class="install-pwa-btn hidden">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Install App
+        </button>
+      </div>
+    </aside>
+    
+    <!-- Main Dashboard Area -->
+    <main class="main-content">
+      
+      <!-- Left Panel: Calendar Grid -->
+      <section class="panel calendar-panel" id="calendar-view">
+        <div class="panel-header">
+          <div class="calendar-controls">
+            <button id="prev-month" class="icon-btn">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <h2 id="current-month-year">July 2026</h2>
+            <button id="next-month" class="icon-btn">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </div>
+          <button id="go-to-today" class="btn secondary">Today</button>
+        </div>
+        
+        <div class="calendar-container">
+          <div class="weekdays-grid">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+          <div id="calendar-days" class="days-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        
+        <div class="calendar-stats">
+          <div class="stat-card">
+            <span class="stat-num" id="stat-completed-count">0</span>
+            <span class="stat-label">Completed Tasks</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num" id="stat-pending-count">0</span>
+            <span class="stat-label">Pending Tasks</span>
+          </div>
+        </div>
+      </section>
+      
+      <!-- Right Panel: Daily Journal Log -->
+      <section class="panel journal-panel">
+        <div class="panel-header">
+          <div class="journal-date-header">
+            <div class="header-title-row">
+              <h2 id="selected-date-title">Tuesday, July 14, 2026</h2>
+              <div id="sync-indicator" class="sync-indicator-icon hidden" title="Connected to Google Drive">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3"/></svg>
+              </div>
+            </div>
+            <p id="selected-date-subtitle">Daily Log</p>
+          </div>
+        </div>
+        
+        <!-- Rapid Log Form -->
+        <div class="rapid-log-creator">
+          <form id="new-entry-form" class="log-form">
+            <div class="input-group">
+              <div class="select-wrapper">
+                <select id="entry-type" class="entry-type-select" title="Entry Type">
+                  <option value="task" data-symbol="•">Task (•)</option>
+                  <option value="event" data-symbol="○">Event (○)</option>
+                  <option value="note" data-symbol="─">Note (─)</option>
+                </select>
+                <div class="select-indicator">•</div>
+              </div>
+              <input type="text" id="entry-text" placeholder="Jot down a task, event, or note..." required autocomplete="off">
+              <button type="submit" class="btn primary add-btn" title="Add Entry">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+            </div>
+          </form>
+        </div>
+        
+        <!-- Log Entries List -->
+        <div class="journal-log-container">
+          <ul id="journal-entries-list" class="entries-list">
+            <!-- Dynamically populated -->
+          </ul>
+        </div>
+      </section>
+      
+    </main>
+  </div>
+  
+  <!-- MODALS -->
+  
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal">
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h2>Settings & Data Portability</h2>
+        <button class="close-modal-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h3>Sync & Backups</h3>
+          <p>Since Aether runs local-first, all data remains securely in your browser. You can back it up or move it between devices below.</p>
+          <div class="btn-group">
+            <button id="export-backup-btn" class="btn primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Export JSON Backup
+            </button>
+            <label class="btn secondary file-input-label">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5-5 5 5M12 5v12"/></svg>
+              Import JSON Backup
+              <input type="file" id="import-backup-file" accept=".json" style="display: none;">
+            </label>
+          </div>
+        </div>
+        
+        <div class="settings-section" style="border-top: 1px solid var(--border-glass); padding-top: 1.5rem;">
+          <h3>Google Drive Sync</h3>
+          <p>Sync your bullet journal logs automatically across devices. Files are saved in your private Google Drive space.</p>
+          
+          <div class="gdrive-status-row">
+            <span class="status-label">Status:</span>
+            <span id="gdrive-status" class="status-badge disconnected">Disconnected</span>
+          </div>
+
+          <div class="gdrive-config">
+            <div class="input-field-group">
+              <label for="gdrive-client-id">Google Client ID</label>
+              <input type="password" id="gdrive-client-id" placeholder="Paste your Google OAuth Client ID here..." autocomplete="off">
+            </div>
+            
+            <div class="btn-group" style="margin-top: 0.75rem;">
+              <button id="gdrive-connect-btn" class="btn primary">Connect Google Drive</button>
+              <button id="gdrive-sync-btn" class="btn secondary hidden">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                Sync Now
+              </button>
+            </div>
+          </div>
+          
+          <div class="setup-instructions-container" style="margin-top: 1rem;">
+            <button type="button" id="toggle-instructions-btn" class="btn-text">Show Google Setup Guide</button>
+            <div id="setup-instructions" class="setup-instructions hidden">
+              <ol>
+                <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>.</li>
+                <li>Create a new project (e.g. "Aether Journal").</li>
+                <li>Search for <strong>"APIs & Services"</strong>, go to <strong>Credentials</strong>, and configure the <strong>OAuth consent screen</strong>. Set User Type to <strong>External</strong> or <strong>Internal</strong>.</li>
+                <li>Add the scope <code>https://www.googleapis.com/auth/drive.file</code>.</li>
+                <li>Under <strong>Credentials</strong>, click <strong>Create Credentials</strong> &rarr; <strong>OAuth client ID</strong>. Select application type <strong>Web application</strong>.</li>
+                <li>Under <strong>Authorized JavaScript origins</strong>, add: <code>http://localhost:8000</code>.</li>
+                <li>Under <strong>Authorized redirect URIs</strong>, add: <code>http://localhost:8000/index.html</code> (exactly). If hosted online, add your page URL (e.g., <code>https://yourusername.github.io/bullet-journal/index.html</code>).</li>
+                <li>Copy the generated <strong>Client ID</strong> and paste it above.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+        
+        <div class="settings-section warning-section">
+          <h3>Reset Data</h3>
+          <p>Delete all journal logs from local storage. This action is permanent!</p>
+          <button id="clear-all-data-btn" class="btn danger">Clear All Data</button>
+        </div>
+        
+        <div class="settings-section">
+          <h3>About Aether</h3>
+          <p>Version 1.0.0. A private, zero-tracking, self-hosted bullet journal. Add it to your home screen or desktop via Chrome to run it as a standalone native app.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Search Modal -->
+  <div id="search-modal" class="modal">
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h2>Search Journal Logs</h2>
+        <button class="close-modal-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="search-input-group">
+          <input type="text" id="search-input" placeholder="Type to search tasks, events, and notes..." autocomplete="off">
+        </div>
+        <div class="search-results-container">
+          <ul id="search-results-list" class="entries-list">
+            <!-- Search results populated dynamically -->
+          </ul>
+          <p id="no-results-msg" class="info-msg hidden">No logs found matching that search.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- JavaScript Application -->
+  <script src="app.js"></script>
+  
+  <!-- Register Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => console.log('Service Worker registered successfully!', reg.scope))
+          .catch((err) => console.log('Service Worker registration failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>
