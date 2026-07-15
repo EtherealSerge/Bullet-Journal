@@ -8,6 +8,7 @@
   
   <!-- Web App Manifest & PWA Tags -->
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -222,9 +223,9 @@
         </div>
         
         <div class="settings-section warning-section">
-          <h3>Reset Data</h3>
-          <p>Delete all journal logs from local storage. This action is permanent!</p>
-          <button id="clear-all-data-btn" class="btn danger">Clear All Data</button>
+          <h3>Reset Local Data</h3>
+          <p>Delete all journal logs from local storage. If Google Drive is connected, your next sync will pull your cloud logs back down. To delete cloud logs, delete the <code>aether_journal_backup.json</code> file in your Google Drive.</p>
+          <button id="clear-all-data-btn" class="btn danger">Clear Local Data</button>
         </div>
         
         <div class="settings-section">
