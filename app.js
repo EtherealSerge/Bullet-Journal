@@ -34,8 +34,7 @@ const DOM = {
   nextMonthBtn: document.getElementById('next-month'),
   goToTodayBtn: document.getElementById('go-to-today'),
   calendarDays: document.getElementById('calendar-days'),
-  statCompletedCount: document.getElementById('stat-completed-count'),
-  statPendingCount: document.getElementById('stat-pending-count'),
+
   
   // Daily Log panel
   selectedDateTitle: document.getElementById('selected-date-title'),
@@ -104,7 +103,6 @@ function generateId() {
 // Save entries to localStorage
 function saveToStorage() {
   localStorage.setItem('aether_journal_entries', JSON.stringify(entries));
-  updateStats();
   renderCalendar();
   
   // Trigger auto-sync if connected
@@ -283,7 +281,6 @@ function renderCalendar() {
     DOM.calendarDays.appendChild(cell);
   }
   
-  updateStats();
 }
 
 // Render Daily Journal Log List
@@ -372,15 +369,7 @@ function renderDailyLog() {
   });
 }
 
-// Update general stats (tasks completed, etc.)
-function updateStats() {
-  const activeTasks = entries.filter(e => e.type === 'task' && !e.deleted);
-  const completed = activeTasks.filter(e => e.status === 'completed').length;
-  const pending = activeTasks.length - completed;
-  
-  DOM.statCompletedCount.textContent = completed;
-  DOM.statPendingCount.textContent = pending;
-}
+
 
 // --- Entry Operations ---
 
