@@ -730,9 +730,13 @@ async function syncWithGoogleDrive(isSilent = false) {
     });
     
     if (searchRes.status === 401) {
-      // Unauthorized, token expired
       handleExpiredToken();
       return;
+    }
+    
+    if (!searchRes.ok) {
+      const errText = await searchRes.text();
+      throw new Error(`Google API Search error: ${searchRes.status} ${searchRes.statusText} - ${errText}`);
     }
     
     const searchData = await searchRes.json();
@@ -750,7 +754,9 @@ async function syncWithGoogleDrive(isSilent = false) {
       if (downloadRes.ok) {
         cloudEntries = await downloadRes.json();
       } else {
-        console.error('Failed to download cloud backup file');
+        const errText = await downloadRes.text();
+        console.error('Failed to download cloud backup file:', errText);
+        throw new Error(`Google API Download error: ${downloadRes.status} - ${errText}`);
       }
     }
     
@@ -773,7 +779,10 @@ async function syncWithGoogleDrive(isSilent = false) {
         body: JSON.stringify(entries)
       });
       
-      if (!updateRes.ok) throw new Error('Failed to update file on Google Drive');
+      if (!updateRes.ok) {
+        const errText = await updateRes.text();
+        throw new Error(`Google API Update error: ${updateRes.status} - ${errText}`);
+      }
     } else {
       // File doesn't exist: Create it via Multipart POST
       const metadata = {
@@ -782,17 +791,15 @@ async function syncWithGoogleDrive(isSilent = false) {
       };
       
       const boundary = 'AetherSyncBoundaryString';
-      const delimiter = `\r\n--${boundary}\r\n`;
-      const closeDelimiter = `\r\n--${boundary}--`;
       
       const multipartBody = 
-        delimiter +
+        `--${boundary}\r\n` +
         'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-        JSON.stringify(metadata) +
-        delimiter +
+        JSON.stringify(metadata) + '\r\n' +
+        `--${boundary}\r\n` +
         'Content-Type: application/json\r\n\r\n' +
-        JSON.stringify(entries) +
-        closeDelimiter;
+        JSON.stringify(entries) + '\r\n' +
+        `--${boundary}--`;
         
       const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
         method: 'POST',
@@ -803,7 +810,10 @@ async function syncWithGoogleDrive(isSilent = false) {
         body: multipartBody
       });
       
-      if (!createRes.ok) throw new Error('Failed to create file on Google Drive');
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        throw new Error(`Google API Create error: ${createRes.status} - ${errText}`);
+      }
     }
     
     setGDriveStatus('connected');
