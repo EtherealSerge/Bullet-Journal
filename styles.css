@@ -1133,3 +1133,235 @@ body {
 .setup-instructions a:hover {
   text-decoration: underline;
 }
+
+/* ==========================================
+   10. Monthly Log Panel
+   ========================================== */
+
+/* Hidden by default; shown when .show-monthly is on .app-container */
+.monthly-log-panel {
+  display: none;
+  flex-direction: column;
+  background: radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.06) 0%, transparent 60%);
+  border-right: 1px solid var(--border-glass);
+}
+
+.app-container.show-monthly .monthly-log-panel {
+  display: flex;
+}
+
+/* On desktop, monthly log spans full main-content width */
+.app-container.show-monthly .main-content {
+  grid-template-columns: 1fr;
+}
+
+.app-container.show-monthly .calendar-panel,
+.app-container.show-monthly .journal-panel {
+  display: none;
+}
+
+/* Header layout */
+.monthly-log-header {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.monthly-log-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.monthly-log-subtitle {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+
+/* Quick-stats pill row */
+.monthly-stats-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.monthly-stat-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.monthly-stat-pill.tasks   { background: rgba(6, 182, 212, 0.12);  color: var(--color-task);      border: 1px solid rgba(6, 182, 212, 0.25); }
+.monthly-stat-pill.done    { background: rgba(16, 185, 129, 0.12); color: var(--color-completed); border: 1px solid rgba(16, 185, 129, 0.25); }
+.monthly-stat-pill.events  { background: rgba(245, 158, 11, 0.12); color: var(--color-event);     border: 1px solid rgba(245, 158, 11, 0.25); }
+.monthly-stat-pill.notes   { background: rgba(168, 162, 158, 0.12); color: var(--color-note);    border: 1px solid rgba(168, 162, 158, 0.2); }
+
+/* Scrollable body */
+.monthly-log-body {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* One section per day */
+.monthly-day-section {
+  display: flex;
+  gap: 1rem;
+  animation: slideIn 0.2s ease-out;
+}
+
+/* Day number gutter */
+.monthly-day-gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 48px;
+  padding-top: 0.15rem;
+}
+
+.monthly-day-num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-sub);
+  transition: var(--transition-smooth);
+}
+
+.monthly-day-name {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+/* Highlight today */
+.monthly-day-section.is-today .monthly-day-num {
+  color: var(--color-secondary);
+  text-shadow: 0 0 12px rgba(6, 182, 212, 0.5);
+}
+
+.monthly-day-section.is-today .monthly-day-name {
+  color: var(--color-secondary);
+}
+
+/* Entries column */
+.monthly-day-entries {
+  flex-grow: 1;
+  border-left: 1px solid var(--border-glass);
+  padding: 0 0 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.monthly-day-section.is-today .monthly-day-entries {
+  border-left-color: rgba(6, 182, 212, 0.35);
+}
+
+/* Individual entry row in monthly log */
+.monthly-entry-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.monthly-entry-row:hover {
+  background-color: var(--bg-card-hover);
+}
+
+.monthly-entry-bullet {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+.monthly-entry-text {
+  font-size: 0.88rem;
+  color: var(--text-main);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.monthly-entry-row[data-status="completed"] .monthly-entry-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.monthly-entry-row[data-type="task"]     .monthly-entry-bullet { color: var(--color-task); }
+.monthly-entry-row[data-status="completed"] .monthly-entry-bullet { color: var(--color-completed); }
+.monthly-entry-row[data-type="event"]   .monthly-entry-bullet { color: var(--color-event); }
+.monthly-entry-row[data-type="note"]    .monthly-entry-bullet { color: var(--color-note); }
+.monthly-entry-row[data-status="migrated"] .monthly-entry-bullet { color: var(--color-migrated); }
+
+/* Empty day placeholder */
+.monthly-empty-day {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 0.3rem 0;
+  font-style: italic;
+}
+
+/* No entries at all in this month */
+.monthly-empty-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 3rem;
+}
+
+.monthly-empty-msg svg {
+  opacity: 0.3;
+  margin-bottom: 0.5rem;
+}
+
+/* Mobile monthly log */
+@media (max-width: 900px) {
+  .monthly-log-panel {
+    border-right: none;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .app-container.show-monthly .main-content {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-log-header {
+    margin-bottom: 1rem;
+  }
+
+  .monthly-day-gutter {
+    min-width: 38px;
+  }
+
+  .monthly-day-num {
+    font-size: 1.1rem;
+  }
+}

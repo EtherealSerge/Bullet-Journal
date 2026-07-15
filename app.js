@@ -66,7 +66,16 @@ const DOM = {
   // Search actions
   searchInput: document.getElementById('search-input'),
   searchResultsList: document.getElementById('search-results-list'),
-  noResultsMsg: document.getElementById('no-results-msg')
+  noResultsMsg: document.getElementById('no-results-msg'),
+  
+  // Monthly Log
+  navMonthlyLog: document.getElementById('nav-monthly-log'),
+  monthlyLogView: document.getElementById('monthly-log-view'),
+  monthlyLogTitle: document.getElementById('monthly-log-title'),
+  monthlyLogBody: document.getElementById('monthly-log-body'),
+  monthlyStatsRow: document.getElementById('monthly-stats-row'),
+  monthlyPrevMonth: document.getElementById('monthly-prev-month'),
+  monthlyNextMonth: document.getElementById('monthly-next-month')
 };
 
 // --- Helper Functions ---
@@ -370,6 +379,127 @@ function renderDailyLog() {
 }
 
 
+
+// ==========================================
+// MONTHLY LOG RENDERER
+// ==========================================
+
+function renderMonthlyLog() {
+  const firstDay = new Date(currentYear, currentMonth, 1);
+  const lastDay  = new Date(currentYear, currentMonth + 1, 0);
+  const todayStr = formatDateKey(new Date());
+
+  // Update header title
+  DOM.monthlyLogTitle.textContent = firstDay.toLocaleDateString(undefined, {
+    month: 'long', year: 'numeric'
+  });
+
+  // Gather all active entries for this month
+  const monthEntries = entries.filter(e => {
+    if (e.deleted) return false;
+    const d = parseDateKey(e.date);
+    return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+  });
+
+  // Build stats pills
+  const totalTasks  = monthEntries.filter(e => e.type === 'task').length;
+  const doneTasks   = monthEntries.filter(e => e.type === 'task' && e.status === 'completed').length;
+  const totalEvents = monthEntries.filter(e => e.type === 'event').length;
+  const totalNotes  = monthEntries.filter(e => e.type === 'note').length;
+
+  DOM.monthlyStatsRow.innerHTML = [
+    totalTasks  ? `<span class="monthly-stat-pill tasks">${totalTasks} task${totalTasks !== 1 ? 's' : ''}</span>` : '',
+    doneTasks   ? `<span class="monthly-stat-pill done">${doneTasks} done</span>` : '',
+    totalEvents ? `<span class="monthly-stat-pill events">${totalEvents} event${totalEvents !== 1 ? 's' : ''}</span>` : '',
+    totalNotes  ? `<span class="monthly-stat-pill notes">${totalNotes} note${totalNotes !== 1 ? 's' : ''}</span>` : ''
+  ].join('');
+
+  DOM.monthlyLogBody.innerHTML = '';
+
+  if (monthEntries.length === 0) {
+    DOM.monthlyLogBody.innerHTML = `
+      <div class="monthly-empty-msg">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <p>No entries for this month.</p>
+        <p style="font-size:0.8rem;margin-top:0.25rem;">Switch to Today to add entries.</p>
+      </div>`;
+    return;
+  }
+
+  // Group entries by date key
+  const byDate = {};
+  monthEntries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
+
+  // Render one section per day that has entries
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    const cellDate = new Date(currentYear, currentMonth, day);
+    const dateKey  = formatDateKey(cellDate);
+    const dayEntries = byDate[dateKey];
+    if (!dayEntries || dayEntries.length === 0) continue;
+
+    const isToday = dateKey === todayStr;
+    const dayName = cellDate.toLocaleDateString(undefined, { weekday: 'short' });
+
+    const section = document.createElement('div');
+    section.classList.add('monthly-day-section');
+    if (isToday) section.classList.add('is-today');
+
+    // Gutter
+    const gutter = document.createElement('div');
+    gutter.classList.add('monthly-day-gutter');
+    gutter.innerHTML = `
+      <span class="monthly-day-num">${day}</span>
+      <span class="monthly-day-name">${dayName}</span>`;
+
+    // Entries column
+    const entriesCol = document.createElement('div');
+    entriesCol.classList.add('monthly-day-entries');
+
+    dayEntries
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+      .forEach(entry => {
+        let bullet = '•';
+        if (entry.type === 'event')                              bullet = '○';
+        if (entry.type === 'note')                               bullet = '─';
+        if (entry.type === 'task' && entry.status === 'completed') bullet = '×';
+        if (entry.type === 'task' && entry.status === 'migrated')  bullet = '›';
+
+        const row = document.createElement('div');
+        row.classList.add('monthly-entry-row');
+        row.setAttribute('data-type',   entry.type);
+        row.setAttribute('data-status', entry.status || 'pending');
+        row.innerHTML = `
+          <span class="monthly-entry-bullet">${bullet}</span>
+          <span class="monthly-entry-text">${escapeHtml(entry.text)}</span>`;
+
+        // Clicking a row navigates to that day's journal
+        row.addEventListener('click', () => {
+          selectedDate = cellDate;
+          currentMonth = cellDate.getMonth();
+          currentYear  = cellDate.getFullYear();
+          // Switch to daily log view
+          DOM.appContainer.classList.remove('show-calendar', 'show-monthly');
+          DOM.navToday.classList.add('active');
+          DOM.navCalendarToggle.classList.remove('active');
+          DOM.navMonthlyLog.classList.remove('active');
+          renderCalendar();
+          renderDailyLog();
+        });
+
+        entriesCol.appendChild(row);
+      });
+
+    section.appendChild(gutter);
+    section.appendChild(entriesCol);
+    DOM.monthlyLogBody.appendChild(section);
+  }
+}
 
 // --- Entry Operations ---
 
@@ -883,11 +1013,12 @@ function setupEventListeners() {
   DOM.navToday.addEventListener('click', () => {
     DOM.navToday.classList.add('active');
     DOM.navCalendarToggle.classList.remove('active');
-    DOM.appContainer.classList.remove('show-calendar');
+    DOM.navMonthlyLog.classList.remove('active');
+    DOM.appContainer.classList.remove('show-calendar', 'show-monthly');
     
     selectedDate = new Date();
     currentMonth = selectedDate.getMonth();
-    currentYear = selectedDate.getFullYear();
+    currentYear  = selectedDate.getFullYear();
     renderCalendar();
     renderDailyLog();
   });
@@ -895,7 +1026,33 @@ function setupEventListeners() {
   DOM.navCalendarToggle.addEventListener('click', () => {
     DOM.navCalendarToggle.classList.add('active');
     DOM.navToday.classList.remove('active');
+    DOM.navMonthlyLog.classList.remove('active');
+    DOM.appContainer.classList.remove('show-monthly');
     DOM.appContainer.classList.add('show-calendar');
+  });
+
+  DOM.navMonthlyLog.addEventListener('click', () => {
+    DOM.navMonthlyLog.classList.add('active');
+    DOM.navToday.classList.remove('active');
+    DOM.navCalendarToggle.classList.remove('active');
+    DOM.appContainer.classList.remove('show-calendar');
+    DOM.appContainer.classList.add('show-monthly');
+    renderMonthlyLog();
+  });
+
+  // Monthly Log month navigation
+  DOM.monthlyPrevMonth.addEventListener('click', () => {
+    currentMonth--;
+    if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+    renderMonthlyLog();
+    renderCalendar(); // keep calendar in sync
+  });
+
+  DOM.monthlyNextMonth.addEventListener('click', () => {
+    currentMonth++;
+    if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+    renderMonthlyLog();
+    renderCalendar(); // keep calendar in sync
   });
   
   DOM.navSearch.addEventListener('click', () => {
