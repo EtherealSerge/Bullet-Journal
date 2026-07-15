@@ -840,20 +840,37 @@ function handleExpiredToken() {
   alert('Your Google login session expired. Please connect again.');
 }
 
-// Conflict Resolution: Merge lists by ID, keeping newer updatedAt
+// Conflict Resolution: Merge lists by ID, keeping newer updatedAt.
+// Discards tutorial entries if cloud data exists to prevent pollution.
 function mergeEntries(localList, cloudList) {
-  if (!Array.isArray(cloudList)) return localList;
+  const hasCloudData = Array.isArray(cloudList) && cloudList.length > 0;
+  const isLocalOnlyTutorials = localList.length > 0 && localList.every(item => item.id.startsWith('tut'));
+  
+  // If cloud data exists and we only have tutorial items locally, completely overwrite them
+  if (hasCloudData && isLocalOnlyTutorials) {
+    console.log('Local data is only tutorial entries. Overwriting with cloud backup.');
+    return cloudList;
+  }
+  
+  if (!Array.isArray(cloudList)) {
+    // If no cloud data, filter out tutorial entries so they are not uploaded to cloud
+    return localList.filter(item => !item.id.startsWith('tut'));
+  }
   if (!Array.isArray(localList)) return cloudList;
   
   const map = new Map();
   
-  // Process local items
+  // Process local items (exclude tutorial items from ever being merged into cloud)
   localList.forEach(item => {
-    map.set(item.id, { ...item });
+    if (!item.id.startsWith('tut')) {
+      map.set(item.id, { ...item });
+    }
   });
   
   // Process cloud items, keeping the one with newer updatedAt
   cloudList.forEach(cloudItem => {
+    if (cloudItem.id.startsWith('tut')) return; // Just in case a tutorial item leaked previously
+    
     const localItem = map.get(cloudItem.id);
     if (!localItem) {
       map.set(cloudItem.id, { ...cloudItem });
@@ -867,7 +884,6 @@ function mergeEntries(localList, cloudList) {
     }
   });
   
-  // Convert map back to list
   return Array.from(map.values());
 }
 
