@@ -14,7 +14,6 @@ const syncBtn = document.getElementById('sync-btn');
 // 2. GOOGLE IDENTITY SERVICES INITIALIZATION
 // ==========================================
 
-// Triggered automatically when https://accounts.google.com/gsi/client loads
 function gisLoaded() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
@@ -26,13 +25,10 @@ function gisLoaded() {
         return;
       }
       
-      // Store access token for subsequent API calls
       accessToken = tokenResponse.access_token;
-      
       syncBtn.textContent = '🔄 Syncing...';
       syncBtn.disabled = true;
       
-      // Sync down from Google Drive
       await downloadFromDrive();
       
       syncBtn.textContent = '✅ Synced to Drive';
@@ -40,21 +36,18 @@ function gisLoaded() {
     },
   });
 
-  // Enable the button once the library is loaded
   syncBtn.disabled = false;
 }
 
 syncBtn.addEventListener('click', () => {
   if (!tokenClient) return;
-  // Request access token from user
   tokenClient.requestAccessToken({ prompt: accessToken ? '' : 'consent' });
 });
 
 // ==========================================
-// 3. GOOGLE DRIVE REST API OPERATIONS (FETCH)
+// 3. GOOGLE DRIVE REST API OPERATIONS
 // ==========================================
 
-// Fetch existing journal file from Google Drive's hidden appData folder
 async function downloadFromDrive() {
   try {
     const query = encodeURIComponent("name='bujo_data.json'");
@@ -67,7 +60,6 @@ async function downloadFromDrive() {
     const data = await response.json();
     
     if (data.files && data.files.length > 0) {
-      // File found: download file contents
       driveFileId = data.files[0].id;
       
       const fileUrl = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
@@ -80,7 +72,6 @@ async function downloadFromDrive() {
       renderMonthlyTasks();
       renderDailyTasks();
     } else {
-      // File does not exist yet: create initial file in Drive
       await uploadToDrive();
     }
   } catch (err) {
@@ -89,7 +80,6 @@ async function downloadFromDrive() {
   }
 }
 
-// Upload current local journal state to Google Drive
 async function uploadToDrive() {
   if (!accessToken) return;
 
@@ -138,10 +128,11 @@ async function uploadToDrive() {
 }
 
 // ==========================================
-// 4. CORE APPLICATION STATE & STORAGE
+// 4. CORE APPLICATION STATE & HELPERS
 // ==========================================
 let currentDate = new Date();
 let selectedDateStr = formatDateKey(new Date());
+const todayStr = formatDateKey(new Date()); // Store true today date key
 
 let journalData = JSON.parse(localStorage.getItem('bujo_data')) || {
   monthly: {},
@@ -158,6 +149,7 @@ const dailyForm = document.getElementById('daily-form');
 const dailyInput = document.getElementById('daily-input');
 const dailyList = document.getElementById('daily-list');
 
+// Formats Date Object to YYYY-MM-DD
 function formatDateKey(dateObj) {
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -165,15 +157,30 @@ function formatDateKey(dateObj) {
   return `${y}-${m}-${d}`;
 }
 
+// Formats Date Object to YYYY-MM
 function formatMonthKey(dateObj) {
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
 }
 
+// NEW HELPER: Converts "YYYY-MM-DD" into "Weekday, Month Day, Year"
+function formatFriendlyDate(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  // Construct date using local timezone arguments (month is 0-indexed)
+  const dateObj = new Date(year, month - 1, day);
+  
+  return dateObj.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
 function saveData() {
   localStorage.setItem('bujo_data', JSON.stringify(journalData));
-  uploadToDrive(); // Automatically sync to cloud if authenticated
+  uploadToDrive();
 }
 
 function getSymbol(status) {
@@ -209,12 +216,14 @@ function renderCalendar() {
   const firstDayIndex = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
 
+  // Render blank slots before month starts
   for (let i = 0; i < firstDayIndex; i++) {
     const emptyCell = document.createElement('div');
     emptyCell.classList.add('day-cell', 'empty');
     calendarGrid.appendChild(emptyCell);
   }
 
+  // Render day numbers
   for (let day = 1; day <= totalDays; day++) {
     const dayCell = document.createElement('div');
     dayCell.classList.add('day-cell');
@@ -222,8 +231,14 @@ function renderCalendar() {
 
     const cellDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     
+    // Highlight active selected date
     if (cellDateStr === selectedDateStr) {
       dayCell.classList.add('active');
+    }
+
+    // Highlight real-world "Today"
+    if (cellDateStr === todayStr) {
+      dayCell.classList.add('today');
     }
 
     dayCell.addEventListener('click', () => {
@@ -256,7 +271,8 @@ function renderMonthlyTasks() {
 }
 
 function renderDailyTasks() {
-  selectedDateDisplay.textContent = selectedDateStr;
+  // UPDATED: Now populates full "Weekday, Month Day, Year" header
+  selectedDateDisplay.textContent = formatFriendlyDate(selectedDateStr);
   dailyList.innerHTML = '';
   const tasks = journalData.daily[selectedDateStr] || [];
 
@@ -304,21 +320,31 @@ function createTaskElement(item, onToggleSymbol, onDelete) {
   return li;
 }
 
+// Helper to handle month switching and auto-selecting dates
+function changeMonth(delta) {
+  currentDate.setMonth(currentDate.getMonth() + delta);
+  
+  // Auto-select 1st of month (or today if moving to current month)
+  const isCurrentMonth = currentDate.getFullYear() === new Date().getFullYear() &&
+                         currentDate.getMonth() === new Date().getMonth();
+
+  if (isCurrentMonth) {
+    selectedDateStr = todayStr;
+  } else {
+    selectedDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+
+  renderCalendar();
+  renderMonthlyTasks();
+  renderDailyTasks();
+}
+
 // ==========================================
 // 6. EVENT LISTENERS & INITIALIZATION
 // ==========================================
 
-document.getElementById('prev-month').addEventListener('click', () => {
-  currentDate.setMonth(currentDate.getMonth() - 1);
-  renderCalendar();
-  renderMonthlyTasks();
-});
-
-document.getElementById('next-month').addEventListener('click', () => {
-  currentDate.setMonth(currentDate.getMonth() + 1);
-  renderCalendar();
-  renderMonthlyTasks();
-});
+document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
+document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
 
 monthlyForm.addEventListener('submit', (e) => {
   e.preventDefault();
