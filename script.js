@@ -122,6 +122,7 @@ function mergeJournalData(local, cloud) {
 
         itemMap.set(key, {
           ...localItem,
+          text: cloudItem.text || localItem.text,
           status: cloudItem.status || localItem.status,
           deleted: isDeleted
         });
@@ -315,7 +316,7 @@ function getNextStatus(currentStatus) {
   return sequence[(currentIndex + 1) % sequence.length];
 }
 
-// Master refresh function to update all UI sections at once
+// Refresh all UI sections
 function renderAllViews() {
   renderCalendar();
   renderMonthlyTasks();
@@ -328,20 +329,18 @@ function renderAllViews() {
 // ==========================================
 
 function autoResizeTextarea(textarea) {
-  textarea.style.height = 'auto'; // Reset height calculation
-  textarea.style.height = (textarea.scrollHeight) + 'px'; // Set new height based on scroll content
+  textarea.style.height = 'auto';
+  textarea.style.height = (textarea.scrollHeight) + 'px';
 }
 
 function resetTextareaHeight(textarea) {
   textarea.value = '';
-  textarea.style.height = '40px'; // Reset back to default base height
+  textarea.style.height = '40px';
 }
 
 function setupAutoExpandingTextarea(textarea, form) {
-  // Recalculate height dynamically on every keystroke/input event
   textarea.addEventListener('input', () => autoResizeTextarea(textarea));
 
-  // Pressing Enter submits form; Pressing Shift+Enter adds a new line
   textarea.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -412,15 +411,23 @@ function renderMonthlyTasks() {
   const activeTasks = tasks.filter(task => !task.deleted);
 
   activeTasks.forEach((task) => {
-    const li = createTaskElement(task, () => {
-      task.status = getNextStatus(task.status);
-      saveData();
-      renderMonthlyTasks();
-    }, () => {
-      task.deleted = true;
-      saveData();
-      renderMonthlyTasks();
-    });
+    const li = createTaskElement(
+      task,
+      () => {
+        task.status = getNextStatus(task.status);
+        saveData();
+        renderMonthlyTasks();
+      },
+      () => {
+        task.deleted = true;
+        saveData();
+        renderMonthlyTasks();
+      },
+      () => {
+        saveData();
+        renderAllViews();
+      }
+    );
     monthlyList.appendChild(li);
   });
 }
@@ -433,17 +440,25 @@ function renderDailyTasks() {
   const activeTasks = tasks.filter(task => !task.deleted);
 
   activeTasks.forEach((task) => {
-    const li = createTaskElement(task, () => {
-      task.status = getNextStatus(task.status);
-      saveData();
-      renderDailyTasks();
-      renderAtAGlanceEvents();
-    }, () => {
-      task.deleted = true;
-      saveData();
-      renderDailyTasks();
-      renderAtAGlanceEvents();
-    });
+    const li = createTaskElement(
+      task,
+      () => {
+        task.status = getNextStatus(task.status);
+        saveData();
+        renderDailyTasks();
+        renderAtAGlanceEvents();
+      },
+      () => {
+        task.deleted = true;
+        saveData();
+        renderDailyTasks();
+        renderAtAGlanceEvents();
+      },
+      () => {
+        saveData();
+        renderAllViews();
+      }
+    );
     dailyList.appendChild(li);
   });
 }
@@ -507,18 +522,90 @@ function renderAtAGlanceEvents() {
       leftDiv.appendChild(badge);
       leftDiv.appendChild(textSpan);
 
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'task-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'edit-btn';
+      editBtn.textContent = '✏️';
+      editBtn.title = 'Edit Event';
+
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'delete-btn';
       deleteBtn.textContent = '✕';
+      deleteBtn.title = 'Delete Event';
       deleteBtn.addEventListener('click', () => {
         event.deleted = true;
         saveData();
-        renderDailyTasks();
-        renderAtAGlanceEvents();
+        renderAllViews();
       });
 
+      let isEditing = false;
+
+      editBtn.addEventListener('click', () => {
+        if (!isEditing) {
+          isEditing = true;
+          editBtn.textContent = '💾';
+          editBtn.title = 'Save Changes';
+
+          const editInput = document.createElement('textarea');
+          editInput.className = 'edit-input';
+          editInput.rows = 1;
+          editInput.value = event.text;
+
+          leftDiv.replaceChild(editInput, textSpan);
+          autoResizeTextarea(editInput);
+          editInput.focus();
+
+          editInput.addEventListener('input', () => autoResizeTextarea(editInput));
+
+          const commitEdit = () => {
+            const newText = editInput.value.trim();
+            if (newText && newText !== event.text) {
+              event.text = newText;
+              saveData();
+              renderAllViews();
+            } else {
+              textSpan.textContent = event.text;
+              if (leftDiv.contains(editInput)) {
+                leftDiv.replaceChild(textSpan, editInput);
+              }
+              editBtn.textContent = '✏️';
+              editBtn.title = 'Edit Event';
+              isEditing = false;
+            }
+          };
+
+          editInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              commitEdit();
+            }
+          });
+        } else {
+          const editInput = leftDiv.querySelector('.edit-input');
+          if (editInput) {
+            const newText = editInput.value.trim();
+            if (newText && newText !== event.text) {
+              event.text = newText;
+              saveData();
+              renderAllViews();
+            } else {
+              textSpan.textContent = event.text;
+              leftDiv.replaceChild(textSpan, editInput);
+              editBtn.textContent = '✏️';
+              editBtn.title = 'Edit Event';
+              isEditing = false;
+            }
+          }
+        }
+      });
+
+      actionsDiv.appendChild(editBtn);
+      actionsDiv.appendChild(deleteBtn);
+
       li.appendChild(leftDiv);
-      li.appendChild(deleteBtn);
+      li.appendChild(actionsDiv);
       glanceList.appendChild(li);
     });
   }
@@ -533,7 +620,7 @@ function renderAtAGlanceEvents() {
   }
 }
 
-function createTaskElement(item, onToggleSymbol, onDelete) {
+function createTaskElement(item, onToggleSymbol, onDelete, onSaveText) {
   const li = document.createElement('li');
   li.className = `task-item status-${item.status}`;
 
@@ -552,13 +639,84 @@ function createTaskElement(item, onToggleSymbol, onDelete) {
   leftDiv.appendChild(symbolBtn);
   leftDiv.appendChild(textSpan);
 
+  const actionsDiv = document.createElement('div');
+  actionsDiv.className = 'task-actions';
+
+  const editBtn = document.createElement('button');
+  editBtn.className = 'edit-btn';
+  editBtn.textContent = '✏️';
+  editBtn.title = 'Edit Entry';
+
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'delete-btn';
   deleteBtn.textContent = '✕';
+  deleteBtn.title = 'Delete Entry';
   deleteBtn.addEventListener('click', onDelete);
 
+  let isEditing = false;
+
+  editBtn.addEventListener('click', () => {
+    if (!isEditing) {
+      isEditing = true;
+      editBtn.textContent = '💾';
+      editBtn.title = 'Save Changes';
+
+      const editInput = document.createElement('textarea');
+      editInput.className = 'edit-input';
+      editInput.rows = 1;
+      editInput.value = item.text;
+
+      leftDiv.replaceChild(editInput, textSpan);
+      autoResizeTextarea(editInput);
+      editInput.focus();
+
+      editInput.addEventListener('input', () => autoResizeTextarea(editInput));
+
+      const commitEdit = () => {
+        const newText = editInput.value.trim();
+        if (newText && newText !== item.text) {
+          item.text = newText;
+          onSaveText();
+        } else {
+          textSpan.textContent = item.text;
+          if (leftDiv.contains(editInput)) {
+            leftDiv.replaceChild(textSpan, editInput);
+          }
+          editBtn.textContent = '✏️';
+          editBtn.title = 'Edit Entry';
+          isEditing = false;
+        }
+      };
+
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          commitEdit();
+        }
+      });
+    } else {
+      const editInput = leftDiv.querySelector('.edit-input');
+      if (editInput) {
+        const newText = editInput.value.trim();
+        if (newText && newText !== item.text) {
+          item.text = newText;
+          onSaveText();
+        } else {
+          textSpan.textContent = item.text;
+          leftDiv.replaceChild(textSpan, editInput);
+          editBtn.textContent = '✏️';
+          editBtn.title = 'Edit Entry';
+          isEditing = false;
+        }
+      }
+    }
+  });
+
+  actionsDiv.appendChild(editBtn);
+  actionsDiv.appendChild(deleteBtn);
+
   li.appendChild(leftDiv);
-  li.appendChild(deleteBtn);
+  li.appendChild(actionsDiv);
 
   return li;
 }
@@ -585,7 +743,6 @@ function changeMonth(delta) {
 document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
 document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
 
-// Attach auto-expand behavior to textareas
 setupAutoExpandingTextarea(monthlyInput, monthlyForm);
 setupAutoExpandingTextarea(dailyInput, dailyForm);
 setupAutoExpandingTextarea(glanceInput, glanceForm);
