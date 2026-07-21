@@ -132,7 +132,7 @@ async function uploadToDrive() {
 // ==========================================
 let currentDate = new Date();
 let selectedDateStr = formatDateKey(new Date());
-const todayStr = formatDateKey(new Date()); // Store true today date key
+const todayStr = formatDateKey(new Date());
 
 let journalData = JSON.parse(localStorage.getItem('bujo_data')) || {
   monthly: {},
@@ -149,7 +149,6 @@ const dailyForm = document.getElementById('daily-form');
 const dailyInput = document.getElementById('daily-input');
 const dailyList = document.getElementById('daily-list');
 
-// Formats Date Object to YYYY-MM-DD
 function formatDateKey(dateObj) {
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -157,17 +156,14 @@ function formatDateKey(dateObj) {
   return `${y}-${m}-${d}`;
 }
 
-// Formats Date Object to YYYY-MM
 function formatMonthKey(dateObj) {
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
 }
 
-// NEW HELPER: Converts "YYYY-MM-DD" into "Weekday, Month Day, Year"
 function formatFriendlyDate(dateStr) {
   const [year, month, day] = dateStr.split('-').map(Number);
-  // Construct date using local timezone arguments (month is 0-indexed)
   const dateObj = new Date(year, month - 1, day);
   
   return dateObj.toLocaleDateString('en-US', {
@@ -216,27 +212,32 @@ function renderCalendar() {
   const firstDayIndex = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
 
-  // Render blank slots before month starts
+  // Blank slots prior to 1st of the month
   for (let i = 0; i < firstDayIndex; i++) {
     const emptyCell = document.createElement('div');
     emptyCell.classList.add('day-cell', 'empty');
     calendarGrid.appendChild(emptyCell);
   }
 
-  // Render day numbers
+  // Populate date cells with day of week + day number
   for (let day = 1; day <= totalDays; day++) {
     const dayCell = document.createElement('div');
     dayCell.classList.add('day-cell');
-    dayCell.textContent = day;
 
+    const dateObj = new Date(year, month, day);
+    const weekdayAbbr = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
     const cellDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    // Structure HTML inside cell: Weekday tag on top, Date number below
+    dayCell.innerHTML = `
+      <span class="weekday-tag">${weekdayAbbr}</span>
+      <span class="day-num">${day}</span>
+    `;
     
-    // Highlight active selected date
     if (cellDateStr === selectedDateStr) {
       dayCell.classList.add('active');
     }
 
-    // Highlight real-world "Today"
     if (cellDateStr === todayStr) {
       dayCell.classList.add('today');
     }
@@ -271,7 +272,6 @@ function renderMonthlyTasks() {
 }
 
 function renderDailyTasks() {
-  // UPDATED: Now populates full "Weekday, Month Day, Year" header
   selectedDateDisplay.textContent = formatFriendlyDate(selectedDateStr);
   dailyList.innerHTML = '';
   const tasks = journalData.daily[selectedDateStr] || [];
@@ -320,11 +320,9 @@ function createTaskElement(item, onToggleSymbol, onDelete) {
   return li;
 }
 
-// Helper to handle month switching and auto-selecting dates
 function changeMonth(delta) {
   currentDate.setMonth(currentDate.getMonth() + delta);
   
-  // Auto-select 1st of month (or today if moving to current month)
   const isCurrentMonth = currentDate.getFullYear() === new Date().getFullYear() &&
                          currentDate.getMonth() === new Date().getMonth();
 
