@@ -213,8 +213,8 @@ body {
   outline: none;
   font-size: 14px;
   font-family: var(--font-family);
-  resize: none; /* Hide default manual resize handle */
-  overflow-y: hidden; /* Hide scrollbars as box expands */
+  resize: none;
+  overflow-y: hidden;
   min-height: 40px;
   line-height: 1.4;
 }
@@ -231,7 +231,7 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
-  height: 40px; /* Aligns with textarea single line */
+  height: 40px;
   white-space: nowrap;
 }
 
@@ -272,7 +272,8 @@ body {
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px dashed var(--border-color);
-  word-break: break-word; /* Allows long text lines in task lists to wrap cleanly */
+  word-break: break-word;
+  gap: 10px;
 }
 
 .task-left {
@@ -280,6 +281,13 @@ body {
   align-items: center;
   gap: 10px;
   flex: 1;
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .symbol-btn {
@@ -294,14 +302,48 @@ body {
   flex-shrink: 0;
 }
 
+.edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.edit-btn:hover {
+  opacity: 1;
+}
+
 .delete-btn {
   background: none;
   border: none;
   color: #c94a4a;
   cursor: pointer;
   font-size: 18px;
-  padding: 4px 8px;
+  padding: 4px 6px;
   flex-shrink: 0;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.delete-btn:hover {
+  opacity: 1;
+}
+
+.edit-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  outline: none;
+  font-size: 14px;
+  font-family: var(--font-family);
+  resize: none;
+  overflow-y: hidden;
+  line-height: 1.4;
+  background-color: #ffffff;
 }
 
 .symbol-legend {
