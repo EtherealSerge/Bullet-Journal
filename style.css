@@ -197,20 +197,30 @@ body {
   margin: 20px 0;
 }
 
-/* Forms & Tasks */
+/* Task Forms & Auto-Expanding Textarea */
 .task-form {
   display: flex;
   gap: 8px;
   margin-bottom: 15px;
+  align-items: flex-start;
 }
 
-.task-form input {
+.task-form textarea {
   flex: 1;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   outline: none;
   font-size: 14px;
+  font-family: var(--font-family);
+  resize: none; /* Hide default manual resize handle */
+  overflow-y: hidden; /* Hide scrollbars as box expands */
+  min-height: 40px;
+  line-height: 1.4;
+}
+
+.task-form textarea:focus {
+  border-color: var(--accent-color);
 }
 
 .task-form button {
@@ -221,6 +231,33 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
+  height: 40px; /* Aligns with textarea single line */
+  white-space: nowrap;
+}
+
+.glance-select {
+  padding: 10px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: #ffffff;
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+  height: 40px;
+}
+
+.event-date-badge {
+  background-color: var(--highlight-color);
+  color: var(--accent-color);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #d0e1fd;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
 }
 
 .task-list {
@@ -235,12 +272,14 @@ body {
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px dashed var(--border-color);
+  word-break: break-word; /* Allows long text lines in task lists to wrap cleanly */
 }
 
 .task-left {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1;
 }
 
 .symbol-btn {
@@ -252,6 +291,7 @@ body {
   cursor: pointer;
   font-weight: bold;
   font-size: 14px;
+  flex-shrink: 0;
 }
 
 .delete-btn {
@@ -261,6 +301,7 @@ body {
   cursor: pointer;
   font-size: 18px;
   padding: 4px 8px;
+  flex-shrink: 0;
 }
 
 .symbol-legend {
@@ -299,7 +340,7 @@ body {
   }
 
   .calendar-weekdays {
-    display: none; /* Hidden on mobile as days are displayed inside each cell */
+    display: none;
   }
 
   .task-form {
@@ -322,28 +363,4 @@ body {
   .day-num {
     font-size: 13px;
   }
-}
-/* At-a-Glance Event Styling */
-.glance-select {
-  padding: 10px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background-color: #ffffff;
-  color: var(--text-color);
-  font-family: var(--font-family);
-  font-size: 14px;
-  outline: none;
-  cursor: pointer;
-}
-
-.event-date-badge {
-  background-color: var(--highlight-color);
-  color: var(--accent-color);
-  font-weight: 600;
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #d0e1fd;
-  white-space: nowrap;
-  letter-spacing: 0.3px;
 }
