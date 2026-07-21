@@ -317,7 +317,7 @@ function getSymbol(status) {
 }
 
 function getNextStatus(currentStatus) {
-  const sequence = ['todo', 'done', 'migrated', 'note'];
+  const sequence = ['todo', 'done', 'migrated', 'note', 'event'];
   const currentIndex = sequence.indexOf(currentStatus);
   return sequence[(currentIndex + 1) % sequence.length];
 }
