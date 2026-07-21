@@ -311,6 +311,7 @@ function getSymbol(status) {
     case 'done': return '✓';
     case 'migrated': return '>';
     case 'note': return '–';
+    case 'event': return '○';  
     default: return '•';
   }
 }
