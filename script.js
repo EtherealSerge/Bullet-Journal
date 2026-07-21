@@ -11,7 +11,38 @@ let driveFileId = null;
 const syncBtn = document.getElementById('sync-btn');
 
 // ==========================================
-// 2. GOOGLE IDENTITY SERVICES INITIALIZATION
+// 2. TOKEN CACHING & HELPER FUNCTIONS
+// ==========================================
+
+// Save access token and expiration timestamp to browser memory
+function saveTokenToCache(token, expiresInSeconds) {
+  accessToken = token;
+  const expirationTime = Date.now() + (expiresInSeconds * 1000) - 60000; // Subtract 1 min buffer
+  localStorage.setItem('bujo_gdrive_token', token);
+  localStorage.setItem('bujo_gdrive_token_exp', expirationTime.toString());
+}
+
+// Retrieve valid cached token from browser memory
+function loadCachedToken() {
+  const cachedToken = localStorage.getItem('bujo_gdrive_token');
+  const cachedExp = localStorage.getItem('bujo_gdrive_token_exp');
+
+  if (cachedToken && cachedExp) {
+    if (Date.now() < parseInt(cachedExp, 10)) {
+      accessToken = cachedToken;
+      console.log("Valid cached access token restored.");
+      return true;
+    } else {
+      console.log("Cached access token has expired.");
+      localStorage.removeItem('bujo_gdrive_token');
+      localStorage.removeItem('bujo_gdrive_token_exp');
+    }
+  }
+  return false;
+}
+
+// ==========================================
+// 3. GOOGLE IDENTITY SERVICES INITIALIZATION
 // ==========================================
 
 function gisLoaded() {
@@ -22,12 +53,15 @@ function gisLoaded() {
       if (tokenResponse.error) {
         console.error('Authentication Error:', tokenResponse);
         syncBtn.textContent = '❌ Auth Failed';
+        syncBtn.disabled = false;
         return;
       }
       
-      accessToken = tokenResponse.access_token;
-      console.log("Google Authentication successful. Access token received.");
+      // Store token and expiration duration (default 3600 seconds)
+      const expiresIn = tokenResponse.expires_in || 3600;
+      saveTokenToCache(tokenResponse.access_token, expiresIn);
       
+      console.log("Google Authentication successful. Token cached.");
       syncBtn.textContent = '🔄 Syncing...';
       syncBtn.disabled = true;
       
@@ -36,15 +70,33 @@ function gisLoaded() {
   });
 
   syncBtn.disabled = false;
+
+  // Check if we already have a valid non-expired cached token on page load
+  if (loadCachedToken()) {
+    syncBtn.textContent = '✅ Connected (Drive)';
+  }
 }
 
+// Click listener handles silent auto-login vs initial consent
 syncBtn.addEventListener('click', () => {
   if (!tokenClient) return;
-  tokenClient.requestAccessToken({ prompt: accessToken ? '' : 'consent' });
+
+  // If cached token is valid, sync immediately
+  if (loadCachedToken()) {
+    syncBtn.textContent = '🔄 Syncing...';
+    syncBtn.disabled = true;
+    downloadAndMergeFromDrive();
+  } else {
+    // If token is missing/expired, request silently (prompt: '') if previously consented
+    const hasConsented = localStorage.getItem('bujo_gdrive_consented') === 'true';
+    localStorage.setItem('bujo_gdrive_consented', 'true');
+    
+    tokenClient.requestAccessToken({ prompt: hasConsented ? '' : 'consent' });
+  }
 });
 
 // ==========================================
-// 3. IMPROVED GOOGLE DRIVE REST OPERATIONS
+// 4. IMPROVED GOOGLE DRIVE REST OPERATIONS
 // ==========================================
 
 async function downloadAndMergeFromDrive() {
@@ -244,7 +296,7 @@ async function uploadToDrive() {
 }
 
 // ==========================================
-// 4. CORE APPLICATION STATE & HELPERS
+// 5. CORE APPLICATION STATE & HELPERS
 // ==========================================
 let currentDate = new Date();
 let selectedDateStr = formatDateKey(new Date());
@@ -296,7 +348,9 @@ function formatFriendlyDate(dateStr) {
 
 function saveData() {
   localStorage.setItem('bujo_data', JSON.stringify(journalData));
-  uploadToDrive();
+  if (loadCachedToken()) {
+    uploadToDrive();
+  }
 }
 
 function getSymbol(status) {
@@ -316,7 +370,6 @@ function getNextStatus(currentStatus) {
   return sequence[(currentIndex + 1) % sequence.length];
 }
 
-// Refresh all UI sections
 function renderAllViews() {
   renderCalendar();
   renderMonthlyTasks();
@@ -325,7 +378,7 @@ function renderAllViews() {
 }
 
 // ==========================================
-// 5. AUTO-EXPANDING TEXTAREA HELPERS
+// 6. AUTO-EXPANDING TEXTAREA HELPERS
 // ==========================================
 
 function autoResizeTextarea(textarea) {
@@ -350,7 +403,7 @@ function setupAutoExpandingTextarea(textarea, form) {
 }
 
 // ==========================================
-// 6. RENDERING LOGIC
+// 7. RENDERING LOGIC
 // ==========================================
 
 function renderCalendar() {
@@ -737,7 +790,7 @@ function changeMonth(delta) {
 }
 
 // ==========================================
-// 7. EVENT LISTENERS & INITIALIZATION
+// 8. EVENT LISTENERS & INITIALIZATION
 // ==========================================
 
 document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
