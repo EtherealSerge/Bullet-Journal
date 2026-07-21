@@ -9,13 +9,14 @@
 <body>
 
   <div class="app-container">
+    <!-- Header with Title and Google Drive Sync Control -->
     <header class="app-header">
       <h1>📓 Bullet Journal</h1>
       <button id="sync-btn" class="sync-button" disabled>🔄 Sync with Google Drive</button>
     </header>
 
     <div class="layout-grid">
-      <!-- Left Panel: Calendar & Monthly Tasks -->
+      <!-- Left Panel: Interactive Calendar, Monthly Tasks & At-a-Glance Events -->
       <main class="panel">
         <div class="calendar-controls">
           <button id="prev-month" aria-label="Previous Month">&lt;</button>
@@ -23,24 +24,39 @@
           <button id="next-month" aria-label="Next Month">&gt;</button>
         </div>
 
-        <!-- Desktop Weekday Bar (hidden on small screens) -->
+        <!-- Desktop Weekday Bar -->
         <div class="calendar-weekdays">
           <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
         </div>
 
+        <!-- Calendar Grid -->
         <div id="calendar-grid" class="calendar-grid"></div>
 
         <hr class="section-divider">
 
+        <!-- Monthly Goals & Tasks -->
         <h3>Monthly Overview</h3>
         <form id="monthly-form" class="task-form">
           <input type="text" id="monthly-input" placeholder="New monthly task or goal..." required autocomplete="off">
           <button type="submit">Add Task</button>
         </form>
         <ul id="monthly-list" class="task-list"></ul>
+
+        <hr class="section-divider">
+
+        <!-- NEW: At-a-Glance Monthly Events -->
+        <h3>📅 Monthly Events At-a-Glance</h3>
+        <form id="glance-form" class="task-form">
+          <select id="glance-day-select" class="glance-select" aria-label="Select Day">
+            <!-- Dynamically populated 1 to 28/30/31 -->
+          </select>
+          <input type="text" id="glance-input" placeholder="New event title..." required autocomplete="off">
+          <button type="submit">Add Event</button>
+        </form>
+        <ul id="glance-list" class="task-list"></ul>
       </main>
 
-      <!-- Right Panel: Daily Rapid Logging -->
+      <!-- Right Panel: Daily Rapid Logging & Symbol Legend -->
       <aside class="panel">
         <h2 id="selected-date-display">Select a Date</h2>
         <p class="panel-subtitle">Daily Log</p>
@@ -50,12 +66,13 @@
           <button type="submit">Add Entry</button>
         </form>
 
+        <!-- Rapid Logging Notation Legend -->
         <div class="symbol-legend">
           <span><strong class="symbol">•</strong> Task</span>
           <span><strong class="symbol">✓</strong> Done</span>
           <span><strong class="symbol">&gt;</strong> Migrated</span>
           <span><strong class="symbol">–</strong> Note</span>
-          <span><strong class="symbol">&#9675</strong> Event</span>
+          <span><strong class="symbol">○</strong> Event</span>
         </div>
 
         <ul id="daily-list" class="task-list"></ul>
