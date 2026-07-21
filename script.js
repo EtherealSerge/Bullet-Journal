@@ -85,7 +85,7 @@ async function downloadAndMergeFromDrive() {
       const cloudData = await fileResponse.json();
       console.log("Downloaded cloud data successfully:", cloudData);
       
-      // Merge cloud entries with local entries
+      // Merge cloud entries with local entries (preserving tombstone deletions)
       journalData = mergeJournalData(journalData, cloudData);
       localStorage.setItem('bujo_data', JSON.stringify(journalData));
       
@@ -105,19 +105,37 @@ async function downloadAndMergeFromDrive() {
   }
 }
 
-// Combine local and cloud journal datasets without losing items
+// Smart merger function combining local and cloud datasets using Tombstones
 function mergeJournalData(local, cloud) {
   const merged = { monthly: {}, daily: {} };
 
   function mergeLists(localList = [], cloudList = []) {
     const itemMap = new Map();
-    localList.forEach(item => itemMap.set(item.id || item.text, item));
-    cloudList.forEach(item => {
+
+    // 1. Add all local items
+    localList.forEach(item => {
       const key = item.id || item.text;
+      itemMap.set(key, { ...item });
+    });
+
+    // 2. Combine cloud items
+    cloudList.forEach(cloudItem => {
+      const key = cloudItem.id || cloudItem.text;
       if (!itemMap.has(key)) {
-        itemMap.set(key, item);
+        itemMap.set(key, { ...cloudItem });
+      } else {
+        const localItem = itemMap.get(key);
+        // CRITICAL FIX: If deleted in EITHER local OR cloud, mark as deleted!
+        const isDeleted = Boolean(localItem.deleted || cloudItem.deleted);
+
+        itemMap.set(key, {
+          ...localItem,
+          status: cloudItem.status || localItem.status,
+          deleted: isDeleted
+        });
       }
     });
+
     return Array.from(itemMap.values());
   }
 
@@ -145,9 +163,7 @@ async function uploadToDrive() {
   if (!accessToken) return;
 
   if (driveFileId) {
-    // ----------------------------------------------------
     // UPDATE EXISTING FILE: Simple media PATCH request
-    // ----------------------------------------------------
     try {
       const url = `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`;
       const response = await fetch(url, {
@@ -177,9 +193,7 @@ async function uploadToDrive() {
       syncBtn.disabled = false;
     }
   } else {
-    // ----------------------------------------------------
     // CREATE NEW FILE: Multipart POST request
-    // ----------------------------------------------------
     try {
       const metadata = {
         name: 'bujo_data.json',
@@ -366,13 +380,17 @@ function renderMonthlyTasks() {
   const monthKey = formatMonthKey(currentDate);
   const tasks = journalData.monthly[monthKey] || [];
 
-  tasks.forEach((task, index) => {
+  // Filter out any tombstoned/deleted entries
+  const activeTasks = tasks.filter(task => !task.deleted);
+
+  activeTasks.forEach((task) => {
     const li = createTaskElement(task, () => {
       task.status = getNextStatus(task.status);
       saveData();
       renderMonthlyTasks();
     }, () => {
-      journalData.monthly[monthKey].splice(index, 1);
+      // Soft-delete task (set tombstone)
+      task.deleted = true;
       saveData();
       renderMonthlyTasks();
     });
@@ -385,13 +403,17 @@ function renderDailyTasks() {
   dailyList.innerHTML = '';
   const tasks = journalData.daily[selectedDateStr] || [];
 
-  tasks.forEach((task, index) => {
+  // Filter out any tombstoned/deleted entries
+  const activeTasks = tasks.filter(task => !task.deleted);
+
+  activeTasks.forEach((task) => {
     const li = createTaskElement(task, () => {
       task.status = getNextStatus(task.status);
       saveData();
       renderDailyTasks();
     }, () => {
-      journalData.daily[selectedDateStr].splice(index, 1);
+      // Soft-delete task (set tombstone)
+      task.deleted = true;
       saveData();
       renderDailyTasks();
     });
@@ -430,7 +452,7 @@ function createTaskElement(item, onToggleSymbol, onDelete) {
 }
 
 function changeMonth(delta) {
-  currentDate.setMonth(currentDate.getMonth() + delta);
+  currentDate.setMonth(currentDate.getMonth() - 1 + delta + 1); // standard month math
   
   const isCurrentMonth = currentDate.getFullYear() === new Date().getFullYear() &&
                          currentDate.getMonth() === new Date().getMonth();
@@ -463,7 +485,7 @@ monthlyForm.addEventListener('submit', (e) => {
     journalData.monthly[monthKey] = [];
   }
 
-  journalData.monthly[monthKey].push({ id: Date.now(), text: text, status: 'todo' });
+  journalData.monthly[monthKey].push({ id: Date.now(), text: text, status: 'todo', deleted: false });
   saveData();
   monthlyInput.value = '';
   renderMonthlyTasks();
@@ -478,7 +500,7 @@ dailyForm.addEventListener('submit', (e) => {
     journalData.daily[selectedDateStr] = [];
   }
 
-  journalData.daily[selectedDateStr].push({ id: Date.now(), text: text, status: 'todo' });
+  journalData.daily[selectedDateStr].push({ id: Date.now(), text: text, status: 'todo', deleted: false });
   saveData();
   dailyInput.value = '';
   renderDailyTasks();
