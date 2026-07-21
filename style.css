@@ -87,25 +87,29 @@ body {
 
 .panel-subtitle {
   color: #666;
-  margin-top: -8px;
+  margin-top: 5px;
   margin-bottom: 15px;
   font-size: 0.9rem;
 }
 
-/* Calendar Styles */
-.calendar-controls {
+/* Calendar & Daily Control Headers */
+.calendar-controls,
+.daily-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
 }
 
-.calendar-controls h2 {
+.calendar-controls h2,
+.daily-controls h2 {
   font-size: 1.2rem;
   margin: 0;
+  text-align: center;
 }
 
-.calendar-controls button {
+.calendar-controls button,
+.daily-controls button {
   background: none;
   border: 1px solid var(--border-color);
   border-radius: 4px;
