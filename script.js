@@ -47,7 +47,6 @@ syncBtn.addEventListener('click', () => {
 // 3. IMPROVED GOOGLE DRIVE REST OPERATIONS
 // ==========================================
 
-// Search appDataFolder and download or create the journal file
 async function downloadAndMergeFromDrive() {
   try {
     const query = encodeURIComponent("name='bujo_data.json' and trashed=false");
@@ -85,15 +84,12 @@ async function downloadAndMergeFromDrive() {
       const cloudData = await fileResponse.json();
       console.log("Downloaded cloud data successfully:", cloudData);
       
-      // Merge cloud entries with local entries (preserving tombstone deletions)
       journalData = mergeJournalData(journalData, cloudData);
       localStorage.setItem('bujo_data', JSON.stringify(journalData));
       
-      // Save unified data back to Drive
       await uploadToDrive();
       
-      renderMonthlyTasks();
-      renderDailyTasks();
+      renderAllViews();
     } else {
       console.log("No existing file found. Creating new file in appDataFolder...");
       await uploadToDrive();
@@ -105,27 +101,23 @@ async function downloadAndMergeFromDrive() {
   }
 }
 
-// Smart merger function combining local and cloud datasets using Tombstones
 function mergeJournalData(local, cloud) {
   const merged = { monthly: {}, daily: {} };
 
   function mergeLists(localList = [], cloudList = []) {
     const itemMap = new Map();
 
-    // 1. Add all local items
     localList.forEach(item => {
       const key = item.id || item.text;
       itemMap.set(key, { ...item });
     });
 
-    // 2. Combine cloud items
     cloudList.forEach(cloudItem => {
       const key = cloudItem.id || cloudItem.text;
       if (!itemMap.has(key)) {
         itemMap.set(key, { ...cloudItem });
       } else {
         const localItem = itemMap.get(key);
-        // CRITICAL FIX: If deleted in EITHER local OR cloud, mark as deleted!
         const isDeleted = Boolean(localItem.deleted || cloudItem.deleted);
 
         itemMap.set(key, {
@@ -158,12 +150,10 @@ function mergeJournalData(local, cloud) {
   return merged;
 }
 
-// Upload journal data to Google Drive
 async function uploadToDrive() {
   if (!accessToken) return;
 
   if (driveFileId) {
-    // UPDATE EXISTING FILE: Simple media PATCH request
     try {
       const url = `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`;
       const response = await fetch(url, {
@@ -193,7 +183,6 @@ async function uploadToDrive() {
       syncBtn.disabled = false;
     }
   } else {
-    // CREATE NEW FILE: Multipart POST request
     try {
       const metadata = {
         name: 'bujo_data.json',
@@ -274,6 +263,10 @@ const monthlyList = document.getElementById('monthly-list');
 const dailyForm = document.getElementById('daily-form');
 const dailyInput = document.getElementById('daily-input');
 const dailyList = document.getElementById('daily-list');
+const glanceForm = document.getElementById('glance-form');
+const glanceInput = document.getElementById('glance-input');
+const glanceSelect = document.getElementById('glance-day-select');
+const glanceList = document.getElementById('glance-list');
 
 function formatDateKey(dateObj) {
   const y = dateObj.getFullYear();
@@ -311,7 +304,7 @@ function getSymbol(status) {
     case 'done': return '✓';
     case 'migrated': return '>';
     case 'note': return '–';
-    case 'event': return '○';  
+    case 'event': return '○';
     default: return '•';
   }
 }
@@ -320,6 +313,14 @@ function getNextStatus(currentStatus) {
   const sequence = ['todo', 'done', 'migrated', 'note', 'event'];
   const currentIndex = sequence.indexOf(currentStatus);
   return sequence[(currentIndex + 1) % sequence.length];
+}
+
+// Master refresh function to update all UI sections at once
+function renderAllViews() {
+  renderCalendar();
+  renderMonthlyTasks();
+  renderDailyTasks();
+  renderAtAGlanceEvents();
 }
 
 // ==========================================
@@ -381,7 +382,6 @@ function renderMonthlyTasks() {
   const monthKey = formatMonthKey(currentDate);
   const tasks = journalData.monthly[monthKey] || [];
 
-  // Filter out any tombstoned/deleted entries
   const activeTasks = tasks.filter(task => !task.deleted);
 
   activeTasks.forEach((task) => {
@@ -390,7 +390,6 @@ function renderMonthlyTasks() {
       saveData();
       renderMonthlyTasks();
     }, () => {
-      // Soft-delete task (set tombstone)
       task.deleted = true;
       saveData();
       renderMonthlyTasks();
@@ -404,7 +403,6 @@ function renderDailyTasks() {
   dailyList.innerHTML = '';
   const tasks = journalData.daily[selectedDateStr] || [];
 
-  // Filter out any tombstoned/deleted entries
   const activeTasks = tasks.filter(task => !task.deleted);
 
   activeTasks.forEach((task) => {
@@ -412,14 +410,104 @@ function renderDailyTasks() {
       task.status = getNextStatus(task.status);
       saveData();
       renderDailyTasks();
+      renderAtAGlanceEvents(); // Refresh events if an entry status changes
     }, () => {
-      // Soft-delete task (set tombstone)
       task.deleted = true;
       saveData();
       renderDailyTasks();
+      renderAtAGlanceEvents(); // Refresh events if deleted from daily view
     });
     dailyList.appendChild(li);
   });
+}
+
+// Populates the Day Select dropdown in the At-a-Glance form
+function populateGlanceDaySelect() {
+  glanceSelect.innerHTML = '';
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  for (let day = 1; day <= totalDays; day++) {
+    const dateObj = new Date(year, month, day);
+    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+    const option = document.createElement('option');
+    option.value = day;
+    option.textContent = `${day} (${dayName})`;
+
+    // Default selection matches selected calendar date if in the active month
+    const [selY, selM, selD] = selectedDateStr.split('-').map(Number);
+    if (selY === year && selM === month + 1 && selD === day) {
+      option.selected = true;
+    }
+
+    glanceSelect.appendChild(option);
+  }
+}
+
+// NEW: Scans all daily logs for active month and renders Event entries
+function renderAtAGlanceEvents() {
+  glanceList.innerHTML = '';
+  populateGlanceDaySelect();
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  let hasEvents = false;
+
+  for (let day = 1; day <= totalDays; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const tasks = journalData.daily[dateStr] || [];
+    const events = tasks.filter(task => task.status === 'event' && !task.deleted);
+
+    events.forEach(event => {
+      hasEvents = true;
+      const dateObj = new Date(year, month, day);
+      const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+
+      const li = document.createElement('li');
+      li.className = 'task-item status-event';
+
+      const leftDiv = document.createElement('div');
+      leftDiv.className = 'task-left';
+
+      // Badge showing Day + Short Weekday
+      const badge = document.createElement('span');
+      badge.className = 'event-date-badge';
+      badge.textContent = `${day} ${dayName}`;
+
+      const textSpan = document.createElement('span');
+      textSpan.className = 'text';
+      textSpan.textContent = event.text;
+
+      leftDiv.appendChild(badge);
+      leftDiv.appendChild(textSpan);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = '✕';
+      deleteBtn.addEventListener('click', () => {
+        event.deleted = true; // Soft delete
+        saveData();
+        renderDailyTasks();
+        renderAtAGlanceEvents();
+      });
+
+      li.appendChild(leftDiv);
+      li.appendChild(deleteBtn);
+      glanceList.appendChild(li);
+    });
+  }
+
+  if (!hasEvents) {
+    const emptyLi = document.createElement('li');
+    emptyLi.className = 'task-item';
+    emptyLi.style.color = '#888';
+    emptyLi.style.fontStyle = 'italic';
+    emptyLi.textContent = 'No events scheduled for this month.';
+    glanceList.appendChild(emptyLi);
+  }
 }
 
 function createTaskElement(item, onToggleSymbol, onDelete) {
@@ -453,7 +541,7 @@ function createTaskElement(item, onToggleSymbol, onDelete) {
 }
 
 function changeMonth(delta) {
-  currentDate.setMonth(currentDate.getMonth() - 1 + delta + 1); // standard month math
+  currentDate.setMonth(currentDate.getMonth() + delta);
   
   const isCurrentMonth = currentDate.getFullYear() === new Date().getFullYear() &&
                          currentDate.getMonth() === new Date().getMonth();
@@ -464,9 +552,7 @@ function changeMonth(delta) {
     selectedDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`;
   }
 
-  renderCalendar();
-  renderMonthlyTasks();
-  renderDailyTasks();
+  renderAllViews();
 }
 
 // ==========================================
@@ -505,9 +591,32 @@ dailyForm.addEventListener('submit', (e) => {
   saveData();
   dailyInput.value = '';
   renderDailyTasks();
+  renderAtAGlanceEvents(); // Refresh events if a daily entry was added
 });
 
-// Initial renders
-renderCalendar();
-renderMonthlyTasks();
-renderDailyTasks();
+// NEW: At-a-Glance Event Form Handler
+glanceForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = glanceInput.value.trim();
+  const day = glanceSelect.value;
+  if (!text || !day) return;
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const targetDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+  if (!journalData.daily[targetDateStr]) {
+    journalData.daily[targetDateStr] = [];
+  }
+
+  // Push directly into daily list with 'event' status
+  journalData.daily[targetDateStr].push({ id: Date.now(), text: text, status: 'event', deleted: false });
+  
+  saveData();
+  glanceInput.value = '';
+  renderDailyTasks();
+  renderAtAGlanceEvents();
+});
+
+// Initial Master Render
+renderAllViews();
