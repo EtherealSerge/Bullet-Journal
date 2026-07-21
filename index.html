@@ -29,7 +29,7 @@
           <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
         </div>
 
-        <!-- Calendar Grid -->
+        <!-- Dynamic Grid Populated by JavaScript -->
         <div id="calendar-grid" class="calendar-grid"></div>
 
         <hr class="section-divider">
@@ -37,20 +37,20 @@
         <!-- Monthly Goals & Tasks -->
         <h3>Monthly Overview</h3>
         <form id="monthly-form" class="task-form">
-          <input type="text" id="monthly-input" placeholder="New monthly task or goal..." required autocomplete="off">
+          <textarea id="monthly-input" rows="1" placeholder="New monthly task or goal..." required autocomplete="off"></textarea>
           <button type="submit">Add Task</button>
         </form>
         <ul id="monthly-list" class="task-list"></ul>
 
         <hr class="section-divider">
 
-        <!-- NEW: At-a-Glance Monthly Events -->
+        <!-- Monthly Events At-a-Glance -->
         <h3>📅 Monthly Events At-a-Glance</h3>
         <form id="glance-form" class="task-form">
           <select id="glance-day-select" class="glance-select" aria-label="Select Day">
             <!-- Dynamically populated 1 to 28/30/31 -->
           </select>
-          <input type="text" id="glance-input" placeholder="New event title..." required autocomplete="off">
+          <textarea id="glance-input" rows="1" placeholder="New event title..." required autocomplete="off"></textarea>
           <button type="submit">Add Event</button>
         </form>
         <ul id="glance-list" class="task-list"></ul>
@@ -62,7 +62,7 @@
         <p class="panel-subtitle">Daily Log</p>
 
         <form id="daily-form" class="task-form">
-          <input type="text" id="daily-input" placeholder="New daily entry..." required autocomplete="off">
+          <textarea id="daily-input" rows="1" placeholder="New daily entry..." required autocomplete="off"></textarea>
           <button type="submit">Add Entry</button>
         </form>
 
