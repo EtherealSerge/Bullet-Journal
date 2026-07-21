@@ -26,7 +26,7 @@ function gisLoaded() {
       }
       
       accessToken = tokenResponse.access_token;
-      console.log("Google Authentication successful. Access token received.");
+      console.log("Google Authentication successful.");
       
       syncBtn.textContent = '🔄 Syncing...';
       syncBtn.disabled = true;
@@ -47,7 +47,7 @@ syncBtn.addEventListener('click', () => {
 // 3. IMPROVED GOOGLE DRIVE REST OPERATIONS
 // ==========================================
 
-// Fetches the latest cloud file and merges it with local storage
+// Search appDataFolder and download or create the journal file
 async function downloadAndMergeFromDrive() {
   try {
     const query = encodeURIComponent("name='bujo_data.json' and trashed=false");
@@ -59,17 +59,16 @@ async function downloadAndMergeFromDrive() {
     
     const data = await response.json();
 
-    // Check for API errors (e.g., 400 Bad Request, 403 Forbidden)
     if (!response.ok) {
-      console.error("Google Drive List Error Response:", data);
-      syncBtn.textContent = '❌ List Failed';
+      console.error("Google Drive List Error:", data);
+      syncBtn.textContent = `❌ Error ${response.status}`;
       syncBtn.disabled = false;
       return;
     }
     
     if (data.files && data.files.length > 0) {
       driveFileId = data.files[0].id;
-      console.log(`Found existing file in appDataFolder. File ID: ${driveFileId}`);
+      console.log(`Found file in appDataFolder. File ID: ${driveFileId}`);
       
       const fileUrl = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
       const fileResponse = await fetch(fileUrl, {
@@ -77,39 +76,35 @@ async function downloadAndMergeFromDrive() {
       });
       
       if (!fileResponse.ok) {
-        console.error("Error downloading file contents:", await fileResponse.json());
-        syncBtn.textContent = '❌ Download Error';
+        console.error("Error reading file contents:", await fileResponse.json());
+        syncBtn.textContent = '❌ Read Error';
         syncBtn.disabled = false;
         return;
       }
 
       const cloudData = await fileResponse.json();
-      console.log("Downloaded cloud data successfully:", cloudData);
       
-      // Combine local data and cloud data so local changes are preserved
+      // Merge cloud entries with local entries
       journalData = mergeJournalData(journalData, cloudData);
-      
-      // Update browser local storage
       localStorage.setItem('bujo_data', JSON.stringify(journalData));
       
-      // Immediately save the unified data back to Drive
+      // Save unified data back to Drive
       await uploadToDrive();
       
       renderMonthlyTasks();
       renderDailyTasks();
     } else {
-      console.log("No existing bujo_data.json found in appDataFolder. Creating new file...");
-      // If no cloud file exists, upload current local data to create it
+      console.log("No existing file found. Creating new file in appDataFolder...");
       await uploadToDrive();
     }
   } catch (err) {
-    console.error("Network error during sync with Drive:", err);
+    console.error("Network error during Drive sync:", err);
     syncBtn.textContent = '❌ Sync Failed';
     syncBtn.disabled = false;
   }
 }
 
-// Smart merger function combining local and cloud datasets
+// Combine local and cloud journal datasets without losing items
 function mergeJournalData(local, cloud) {
   const merged = { monthly: {}, daily: {} };
 
@@ -144,30 +139,41 @@ function mergeJournalData(local, cloud) {
   return merged;
 }
 
-// Upload current state to Google Drive using standard multipart payload
+// Upload journal data to Google Drive using Blob binary formatting
 async function uploadToDrive() {
   if (!accessToken) return;
 
-  const fileContent = JSON.stringify(journalData);
+  const isUpdate = Boolean(driveFileId);
+
+  // Define file metadata (assign parents ONLY on initial creation)
   const metadata = {
     name: 'bujo_data.json',
-    mimeType: 'application/json',
-    parents: ['appDataFolder']
+    mimeType: 'application/json'
   };
 
-  const boundary = 'bujo_boundary_string';
-  
-  // Format multipart body according to Google REST API v3 specs
-  const body = 
-    `--${boundary}\r\n` +
-    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-    `${JSON.stringify(metadata)}\r\n` +
-    `--${boundary}\r\n` +
-    `Content-Type: application/json\r\n\r\n` +
-    `${fileContent}\r\n` +
-    `--${boundary}--`;
+  if (!isUpdate) {
+    metadata.parents = ['appDataFolder'];
+  }
 
-  const isUpdate = Boolean(driveFileId);
+  const boundary = 'bujo_multipart_boundary';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelimiter = `\r\n--${boundary}--`;
+
+  // Construct multipart request using Blob for accurate HTTP formatting
+  const multipartBodyParts = [
+    delimiter,
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+    JSON.stringify(metadata),
+    delimiter,
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+    JSON.stringify(journalData),
+    closeDelimiter
+  ];
+
+  const bodyBlob = new Blob(multipartBodyParts, {
+    type: `multipart/related; boundary=${boundary}`
+  });
+
   const url = isUpdate
     ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`
     : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
@@ -179,26 +185,26 @@ async function uploadToDrive() {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': `multipart/related; boundary=${boundary}`
       },
-      body: body
+      body: bodyBlob
     });
     
     const result = await response.json();
 
     if (!response.ok) {
-      console.error("Google Drive Upload Error Response:", result);
-      syncBtn.textContent = '❌ Upload Failed';
+      console.error("Google Drive Upload Error Details:", result);
+      syncBtn.textContent = `❌ ${response.status} Error`;
       syncBtn.disabled = false;
       return;
     }
 
     if (result.id) {
       driveFileId = result.id;
-      console.log(`Successfully saved file to Drive! File ID: ${driveFileId}`);
+      console.log(`Successfully uploaded file! ID: ${driveFileId}`);
       syncBtn.textContent = '✅ Synced to Drive';
       syncBtn.disabled = false;
     }
   } catch (err) {
-    console.error("Network error during file upload:", err);
+    console.error("Network upload error:", err);
     syncBtn.textContent = '❌ Upload Failed';
     syncBtn.disabled = false;
   }
