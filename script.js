@@ -29,7 +29,7 @@ function gisLoaded() {
       syncBtn.textContent = '🔄 Syncing...';
       syncBtn.disabled = true;
       
-      await downloadFromDrive();
+      await downloadAndMergeFromDrive();
       
       syncBtn.textContent = '✅ Synced to Drive';
       syncBtn.disabled = false;
@@ -45,13 +45,15 @@ syncBtn.addEventListener('click', () => {
 });
 
 // ==========================================
-// 3. GOOGLE DRIVE REST API OPERATIONS
+// 3. IMPROVED GOOGLE DRIVE REST OPERATIONS
 // ==========================================
 
-async function downloadFromDrive() {
+// Fetches the latest cloud file and merges it with local storage
+async function downloadAndMergeFromDrive() {
   try {
-    const query = encodeURIComponent("name='bujo_data.json'");
-    const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${query}&fields=files(id,name)`;
+    // Query non-trashed files named 'bujo_data.json', ordered by newest first
+    const query = encodeURIComponent("name='bujo_data.json' and trashed=false");
+    const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${query}&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)`;
     
     const response = await fetch(listUrl, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -60,6 +62,7 @@ async function downloadFromDrive() {
     const data = await response.json();
     
     if (data.files && data.files.length > 0) {
+      // Use the newest file ID
       driveFileId = data.files[0].id;
       
       const fileUrl = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
@@ -67,19 +70,73 @@ async function downloadFromDrive() {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       
-      journalData = await fileResponse.json();
+      const cloudData = await fileResponse.json();
+      
+      // Combine local data and cloud data so local changes are preserved
+      journalData = mergeJournalData(journalData, cloudData);
+      
+      // Update browser local storage
       localStorage.setItem('bujo_data', JSON.stringify(journalData));
+      
+      // Immediately save the unified data back to Drive
+      await uploadToDrive();
+      
       renderMonthlyTasks();
       renderDailyTasks();
     } else {
+      // If no cloud file exists, upload current local data to create it
       await uploadToDrive();
     }
   } catch (err) {
-    console.error("Error downloading from Drive:", err);
+    console.error("Error syncing with Drive:", err);
     syncBtn.textContent = '❌ Sync Failed';
   }
 }
 
+// Smart merger function combining two journal datasets
+function mergeJournalData(local, cloud) {
+  const merged = { monthly: {}, daily: {} };
+
+  // Helper function to combine task arrays without duplicates
+  function mergeLists(localList = [], cloudList = []) {
+    const itemMap = new Map();
+    
+    // Add local items
+    localList.forEach(item => itemMap.set(item.id || item.text, item));
+    
+    // Add or combine cloud items
+    cloudList.forEach(item => {
+      const key = item.id || item.text;
+      if (!itemMap.has(key)) {
+        itemMap.set(key, item);
+      }
+    });
+
+    return Array.from(itemMap.values());
+  }
+
+  // Merge all monthly keys
+  const allMonthlyKeys = new Set([
+    ...Object.keys(local.monthly || {}),
+    ...Object.keys(cloud.monthly || {})
+  ]);
+  allMonthlyKeys.forEach(key => {
+    merged.monthly[key] = mergeLists(local.monthly[key], cloud.monthly[key]);
+  });
+
+  // Merge all daily keys
+  const allDailyKeys = new Set([
+    ...Object.keys(local.daily || {}),
+    ...Object.keys(cloud.daily || {})
+  ]);
+  allDailyKeys.forEach(key => {
+    merged.daily[key] = mergeLists(local.daily[key], cloud.daily[key]);
+  });
+
+  return merged;
+}
+
+// Upload current state to Google Drive
 async function uploadToDrive() {
   if (!accessToken) return;
 
@@ -212,14 +269,12 @@ function renderCalendar() {
   const firstDayIndex = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
 
-  // Blank slots prior to 1st of the month
   for (let i = 0; i < firstDayIndex; i++) {
     const emptyCell = document.createElement('div');
     emptyCell.classList.add('day-cell', 'empty');
     calendarGrid.appendChild(emptyCell);
   }
 
-  // Populate date cells with day of week + day number
   for (let day = 1; day <= totalDays; day++) {
     const dayCell = document.createElement('div');
     dayCell.classList.add('day-cell');
@@ -228,7 +283,6 @@ function renderCalendar() {
     const weekdayAbbr = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
     const cellDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-    // Structure HTML inside cell: Weekday tag on top, Date number below
     dayCell.innerHTML = `
       <span class="weekday-tag">${weekdayAbbr}</span>
       <span class="day-num">${day}</span>
