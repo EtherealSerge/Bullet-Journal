@@ -324,7 +324,34 @@ function renderAllViews() {
 }
 
 // ==========================================
-// 5. RENDERING LOGIC
+// 5. AUTO-EXPANDING TEXTAREA HELPERS
+// ==========================================
+
+function autoResizeTextarea(textarea) {
+  textarea.style.height = 'auto'; // Reset height calculation
+  textarea.style.height = (textarea.scrollHeight) + 'px'; // Set new height based on scroll content
+}
+
+function resetTextareaHeight(textarea) {
+  textarea.value = '';
+  textarea.style.height = '40px'; // Reset back to default base height
+}
+
+function setupAutoExpandingTextarea(textarea, form) {
+  // Recalculate height dynamically on every keystroke/input event
+  textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+
+  // Pressing Enter submits form; Pressing Shift+Enter adds a new line
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+}
+
+// ==========================================
+// 6. RENDERING LOGIC
 // ==========================================
 
 function renderCalendar() {
@@ -410,18 +437,17 @@ function renderDailyTasks() {
       task.status = getNextStatus(task.status);
       saveData();
       renderDailyTasks();
-      renderAtAGlanceEvents(); // Refresh events if an entry status changes
+      renderAtAGlanceEvents();
     }, () => {
       task.deleted = true;
       saveData();
       renderDailyTasks();
-      renderAtAGlanceEvents(); // Refresh events if deleted from daily view
+      renderAtAGlanceEvents();
     });
     dailyList.appendChild(li);
   });
 }
 
-// Populates the Day Select dropdown in the At-a-Glance form
 function populateGlanceDaySelect() {
   glanceSelect.innerHTML = '';
   const year = currentDate.getFullYear();
@@ -435,7 +461,6 @@ function populateGlanceDaySelect() {
     option.value = day;
     option.textContent = `${day} (${dayName})`;
 
-    // Default selection matches selected calendar date if in the active month
     const [selY, selM, selD] = selectedDateStr.split('-').map(Number);
     if (selY === year && selM === month + 1 && selD === day) {
       option.selected = true;
@@ -445,7 +470,6 @@ function populateGlanceDaySelect() {
   }
 }
 
-// NEW: Scans all daily logs for active month and renders Event entries
 function renderAtAGlanceEvents() {
   glanceList.innerHTML = '';
   populateGlanceDaySelect();
@@ -472,7 +496,6 @@ function renderAtAGlanceEvents() {
       const leftDiv = document.createElement('div');
       leftDiv.className = 'task-left';
 
-      // Badge showing Day + Short Weekday
       const badge = document.createElement('span');
       badge.className = 'event-date-badge';
       badge.textContent = `${day} ${dayName}`;
@@ -488,7 +511,7 @@ function renderAtAGlanceEvents() {
       deleteBtn.className = 'delete-btn';
       deleteBtn.textContent = '✕';
       deleteBtn.addEventListener('click', () => {
-        event.deleted = true; // Soft delete
+        event.deleted = true;
         saveData();
         renderDailyTasks();
         renderAtAGlanceEvents();
@@ -556,11 +579,16 @@ function changeMonth(delta) {
 }
 
 // ==========================================
-// 6. EVENT LISTENERS & INITIALIZATION
+// 7. EVENT LISTENERS & INITIALIZATION
 // ==========================================
 
 document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
 document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
+
+// Attach auto-expand behavior to textareas
+setupAutoExpandingTextarea(monthlyInput, monthlyForm);
+setupAutoExpandingTextarea(dailyInput, dailyForm);
+setupAutoExpandingTextarea(glanceInput, glanceForm);
 
 monthlyForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -574,7 +602,7 @@ monthlyForm.addEventListener('submit', (e) => {
 
   journalData.monthly[monthKey].push({ id: Date.now(), text: text, status: 'todo', deleted: false });
   saveData();
-  monthlyInput.value = '';
+  resetTextareaHeight(monthlyInput);
   renderMonthlyTasks();
 });
 
@@ -589,12 +617,11 @@ dailyForm.addEventListener('submit', (e) => {
 
   journalData.daily[selectedDateStr].push({ id: Date.now(), text: text, status: 'todo', deleted: false });
   saveData();
-  dailyInput.value = '';
+  resetTextareaHeight(dailyInput);
   renderDailyTasks();
-  renderAtAGlanceEvents(); // Refresh events if a daily entry was added
+  renderAtAGlanceEvents();
 });
 
-// NEW: At-a-Glance Event Form Handler
 glanceForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = glanceInput.value.trim();
@@ -609,11 +636,10 @@ glanceForm.addEventListener('submit', (e) => {
     journalData.daily[targetDateStr] = [];
   }
 
-  // Push directly into daily list with 'event' status
   journalData.daily[targetDateStr].push({ id: Date.now(), text: text, status: 'event', deleted: false });
   
   saveData();
-  glanceInput.value = '';
+  resetTextareaHeight(glanceInput);
   renderDailyTasks();
   renderAtAGlanceEvents();
 });
