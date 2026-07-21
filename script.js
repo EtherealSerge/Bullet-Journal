@@ -26,7 +26,7 @@ function gisLoaded() {
       }
       
       accessToken = tokenResponse.access_token;
-      console.log("Google Authentication successful.");
+      console.log("Google Authentication successful. Access token received.");
       
       syncBtn.textContent = '🔄 Syncing...';
       syncBtn.disabled = true;
@@ -68,7 +68,7 @@ async function downloadAndMergeFromDrive() {
     
     if (data.files && data.files.length > 0) {
       driveFileId = data.files[0].id;
-      console.log(`Found file in appDataFolder. File ID: ${driveFileId}`);
+      console.log(`Found existing file in appDataFolder. File ID: ${driveFileId}`);
       
       const fileUrl = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
       const fileResponse = await fetch(fileUrl, {
@@ -76,13 +76,14 @@ async function downloadAndMergeFromDrive() {
       });
       
       if (!fileResponse.ok) {
-        console.error("Error reading file contents:", await fileResponse.json());
-        syncBtn.textContent = '❌ Read Error';
+        console.error("Error downloading file contents:", await fileResponse.json());
+        syncBtn.textContent = '❌ Download Error';
         syncBtn.disabled = false;
         return;
       }
 
       const cloudData = await fileResponse.json();
+      console.log("Downloaded cloud data successfully:", cloudData);
       
       // Merge cloud entries with local entries
       journalData = mergeJournalData(journalData, cloudData);
@@ -139,74 +140,102 @@ function mergeJournalData(local, cloud) {
   return merged;
 }
 
-// Upload journal data to Google Drive using Blob binary formatting
+// Upload journal data to Google Drive
 async function uploadToDrive() {
   if (!accessToken) return;
 
-  const isUpdate = Boolean(driveFileId);
+  if (driveFileId) {
+    // ----------------------------------------------------
+    // UPDATE EXISTING FILE: Simple media PATCH request
+    // ----------------------------------------------------
+    try {
+      const url = `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`;
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': `application/json`
+        },
+        body: JSON.stringify(journalData)
+      });
 
-  // Define file metadata (assign parents ONLY on initial creation)
-  const metadata = {
-    name: 'bujo_data.json',
-    mimeType: 'application/json'
-  };
+      const result = await response.json();
 
-  if (!isUpdate) {
-    metadata.parents = ['appDataFolder'];
-  }
+      if (!response.ok) {
+        console.error("Google Drive Update Error Details:", result);
+        syncBtn.textContent = `❌ Update Error ${response.status}`;
+        syncBtn.disabled = false;
+        return;
+      }
 
-  const boundary = 'bujo_multipart_boundary';
-  const delimiter = `\r\n--${boundary}\r\n`;
-  const closeDelimiter = `\r\n--${boundary}--`;
-
-  // Construct multipart request using Blob for accurate HTTP formatting
-  const multipartBodyParts = [
-    delimiter,
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-    JSON.stringify(metadata),
-    delimiter,
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-    JSON.stringify(journalData),
-    closeDelimiter
-  ];
-
-  const bodyBlob = new Blob(multipartBodyParts, {
-    type: `multipart/related; boundary=${boundary}`
-  });
-
-  const url = isUpdate
-    ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`
-    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-
-  try {
-    const response = await fetch(url, {
-      method: isUpdate ? 'PATCH' : 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`
-      },
-      body: bodyBlob
-    });
-    
-    const result = await response.json();
-
-    if (!response.ok) {
-      console.error("Google Drive Upload Error Details:", result);
-      syncBtn.textContent = `❌ ${response.status} Error`;
-      syncBtn.disabled = false;
-      return;
-    }
-
-    if (result.id) {
-      driveFileId = result.id;
-      console.log(`Successfully uploaded file! ID: ${driveFileId}`);
+      console.log(`Successfully updated file in Drive! ID: ${driveFileId}`);
       syncBtn.textContent = '✅ Synced to Drive';
       syncBtn.disabled = false;
+    } catch (err) {
+      console.error("Network upload error:", err);
+      syncBtn.textContent = '❌ Upload Failed';
+      syncBtn.disabled = false;
     }
-  } catch (err) {
-    console.error("Network upload error:", err);
-    syncBtn.textContent = '❌ Upload Failed';
-    syncBtn.disabled = false;
+  } else {
+    // ----------------------------------------------------
+    // CREATE NEW FILE: Multipart POST request
+    // ----------------------------------------------------
+    try {
+      const metadata = {
+        name: 'bujo_data.json',
+        mimeType: 'application/json',
+        parents: ['appDataFolder']
+      };
+
+      const boundary = 'bujo_multipart_boundary';
+      const delimiter = `\r\n--${boundary}\r\n`;
+      const closeDelimiter = `\r\n--${boundary}--`;
+
+      const multipartBodyParts = [
+        delimiter,
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+        JSON.stringify(metadata),
+        delimiter,
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+        JSON.stringify(journalData),
+        closeDelimiter
+      ];
+
+      const bodyBlob = new Blob(multipartBodyParts, {
+        type: `multipart/related; boundary=${boundary}`
+      });
+
+      const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`
+        },
+        body: bodyBlob
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error("Google Drive Create Error Details:", result);
+        syncBtn.textContent = `❌ Create Error ${response.status}`;
+        syncBtn.disabled = false;
+        return;
+      }
+
+      if (result.id) {
+        driveFileId = result.id;
+        console.log(`Successfully created file in Drive! ID: ${driveFileId}`);
+        syncBtn.textContent = '✅ Synced to Drive';
+        syncBtn.disabled = false;
+      }
+    } catch (err) {
+      console.error("Network create error:", err);
+      syncBtn.textContent = '❌ Create Failed';
+      syncBtn.disabled = false;
+    }
   }
 }
 
