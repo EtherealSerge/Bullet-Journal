@@ -14,15 +14,13 @@ const syncBtn = document.getElementById('sync-btn');
 // 2. TOKEN CACHING & HELPER FUNCTIONS
 // ==========================================
 
-// Save access token and expiration timestamp to browser memory
 function saveTokenToCache(token, expiresInSeconds) {
   accessToken = token;
-  const expirationTime = Date.now() + (expiresInSeconds * 1000) - 60000; // Subtract 1 min buffer
+  const expirationTime = Date.now() + (expiresInSeconds * 1000) - 60000;
   localStorage.setItem('bujo_gdrive_token', token);
   localStorage.setItem('bujo_gdrive_token_exp', expirationTime.toString());
 }
 
-// Retrieve valid cached token from browser memory
 function loadCachedToken() {
   const cachedToken = localStorage.getItem('bujo_gdrive_token');
   const cachedExp = localStorage.getItem('bujo_gdrive_token_exp');
@@ -57,7 +55,6 @@ function gisLoaded() {
         return;
       }
       
-      // Store token and expiration duration (default 3600 seconds)
       const expiresIn = tokenResponse.expires_in || 3600;
       saveTokenToCache(tokenResponse.access_token, expiresIn);
       
@@ -71,23 +68,19 @@ function gisLoaded() {
 
   syncBtn.disabled = false;
 
-  // Check if we already have a valid non-expired cached token on page load
   if (loadCachedToken()) {
     syncBtn.textContent = '✅ Connected (Drive)';
   }
 }
 
-// Click listener handles silent auto-login vs initial consent
 syncBtn.addEventListener('click', () => {
   if (!tokenClient) return;
 
-  // If cached token is valid, sync immediately
   if (loadCachedToken()) {
     syncBtn.textContent = '🔄 Syncing...';
     syncBtn.disabled = true;
     downloadAndMergeFromDrive();
   } else {
-    // If token is missing/expired, request silently (prompt: '') if previously consented
     const hasConsented = localStorage.getItem('bujo_gdrive_consented') === 'true';
     localStorage.setItem('bujo_gdrive_consented', 'true');
     
@@ -789,12 +782,32 @@ function changeMonth(delta) {
   renderAllViews();
 }
 
+// NEW: Shifts selectedDateStr forward (+1) or backward (-1) by days
+function changeDay(delta) {
+  const [year, month, day] = selectedDateStr.split('-').map(Number);
+  const dateObj = new Date(year, month - 1, day);
+  dateObj.setDate(dateObj.getDate() + delta);
+
+  selectedDateStr = formatDateKey(dateObj);
+
+  // If new date moves to a different month/year, update calendar currentDate to match
+  if (dateObj.getFullYear() !== currentDate.getFullYear() || dateObj.getMonth() !== currentDate.getMonth()) {
+    currentDate = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
+  }
+
+  renderAllViews();
+}
+
 // ==========================================
 // 8. EVENT LISTENERS & INITIALIZATION
 // ==========================================
 
 document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
 document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
+
+// New Daily Navigation Event Listeners
+document.getElementById('prev-day').addEventListener('click', () => changeDay(-1));
+document.getElementById('next-day').addEventListener('click', () => changeDay(1));
 
 setupAutoExpandingTextarea(monthlyInput, monthlyForm);
 setupAutoExpandingTextarea(dailyInput, dailyForm);
