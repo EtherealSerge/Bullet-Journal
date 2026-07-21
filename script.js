@@ -26,13 +26,12 @@ function gisLoaded() {
       }
       
       accessToken = tokenResponse.access_token;
+      console.log("Google Authentication successful. Access token received.");
+      
       syncBtn.textContent = '🔄 Syncing...';
       syncBtn.disabled = true;
       
       await downloadAndMergeFromDrive();
-      
-      syncBtn.textContent = '✅ Synced to Drive';
-      syncBtn.disabled = false;
     },
   });
 
@@ -51,7 +50,6 @@ syncBtn.addEventListener('click', () => {
 // Fetches the latest cloud file and merges it with local storage
 async function downloadAndMergeFromDrive() {
   try {
-    // Query non-trashed files named 'bujo_data.json', ordered by newest first
     const query = encodeURIComponent("name='bujo_data.json' and trashed=false");
     const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${query}&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)`;
     
@@ -60,17 +58,33 @@ async function downloadAndMergeFromDrive() {
     });
     
     const data = await response.json();
+
+    // Check for API errors (e.g., 400 Bad Request, 403 Forbidden)
+    if (!response.ok) {
+      console.error("Google Drive List Error Response:", data);
+      syncBtn.textContent = '❌ List Failed';
+      syncBtn.disabled = false;
+      return;
+    }
     
     if (data.files && data.files.length > 0) {
-      // Use the newest file ID
       driveFileId = data.files[0].id;
+      console.log(`Found existing file in appDataFolder. File ID: ${driveFileId}`);
       
       const fileUrl = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
       const fileResponse = await fetch(fileUrl, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       
+      if (!fileResponse.ok) {
+        console.error("Error downloading file contents:", await fileResponse.json());
+        syncBtn.textContent = '❌ Download Error';
+        syncBtn.disabled = false;
+        return;
+      }
+
       const cloudData = await fileResponse.json();
+      console.log("Downloaded cloud data successfully:", cloudData);
       
       // Combine local data and cloud data so local changes are preserved
       journalData = mergeJournalData(journalData, cloudData);
@@ -84,38 +98,33 @@ async function downloadAndMergeFromDrive() {
       renderMonthlyTasks();
       renderDailyTasks();
     } else {
+      console.log("No existing bujo_data.json found in appDataFolder. Creating new file...");
       // If no cloud file exists, upload current local data to create it
       await uploadToDrive();
     }
   } catch (err) {
-    console.error("Error syncing with Drive:", err);
+    console.error("Network error during sync with Drive:", err);
     syncBtn.textContent = '❌ Sync Failed';
+    syncBtn.disabled = false;
   }
 }
 
-// Smart merger function combining two journal datasets
+// Smart merger function combining local and cloud datasets
 function mergeJournalData(local, cloud) {
   const merged = { monthly: {}, daily: {} };
 
-  // Helper function to combine task arrays without duplicates
   function mergeLists(localList = [], cloudList = []) {
     const itemMap = new Map();
-    
-    // Add local items
     localList.forEach(item => itemMap.set(item.id || item.text, item));
-    
-    // Add or combine cloud items
     cloudList.forEach(item => {
       const key = item.id || item.text;
       if (!itemMap.has(key)) {
         itemMap.set(key, item);
       }
     });
-
     return Array.from(itemMap.values());
   }
 
-  // Merge all monthly keys
   const allMonthlyKeys = new Set([
     ...Object.keys(local.monthly || {}),
     ...Object.keys(cloud.monthly || {})
@@ -124,7 +133,6 @@ function mergeJournalData(local, cloud) {
     merged.monthly[key] = mergeLists(local.monthly[key], cloud.monthly[key]);
   });
 
-  // Merge all daily keys
   const allDailyKeys = new Set([
     ...Object.keys(local.daily || {}),
     ...Object.keys(cloud.daily || {})
@@ -136,7 +144,7 @@ function mergeJournalData(local, cloud) {
   return merged;
 }
 
-// Upload current state to Google Drive
+// Upload current state to Google Drive using standard multipart payload
 async function uploadToDrive() {
   if (!accessToken) return;
 
@@ -147,18 +155,17 @@ async function uploadToDrive() {
     parents: ['appDataFolder']
   };
 
-  const boundary = '-------314159265358979323846';
-  const delimiter = "\r\n--" + boundary + "\r\n";
-  const close_delim = "\r\n--" + boundary + "--";
-
-  const body =
-    delimiter +
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-    JSON.stringify(metadata) +
-    delimiter +
-    'Content-Type: application/json\r\n\r\n' +
-    fileContent +
-    close_delim;
+  const boundary = 'bujo_boundary_string';
+  
+  // Format multipart body according to Google REST API v3 specs
+  const body = 
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: application/json\r\n\r\n` +
+    `${fileContent}\r\n` +
+    `--${boundary}--`;
 
   const isUpdate = Boolean(driveFileId);
   const url = isUpdate
@@ -170,17 +177,30 @@ async function uploadToDrive() {
       method: isUpdate ? 'PATCH' : 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': `multipart/related; boundary="${boundary}"`
+        'Content-Type': `multipart/related; boundary=${boundary}`
       },
       body: body
     });
     
     const result = await response.json();
+
+    if (!response.ok) {
+      console.error("Google Drive Upload Error Response:", result);
+      syncBtn.textContent = '❌ Upload Failed';
+      syncBtn.disabled = false;
+      return;
+    }
+
     if (result.id) {
       driveFileId = result.id;
+      console.log(`Successfully saved file to Drive! File ID: ${driveFileId}`);
+      syncBtn.textContent = '✅ Synced to Drive';
+      syncBtn.disabled = false;
     }
   } catch (err) {
-    console.error("Error uploading to Drive:", err);
+    console.error("Network error during file upload:", err);
+    syncBtn.textContent = '❌ Upload Failed';
+    syncBtn.disabled = false;
   }
 }
 
