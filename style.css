@@ -323,3 +323,27 @@ body {
     font-size: 13px;
   }
 }
+/* At-a-Glance Event Styling */
+.glance-select {
+  padding: 10px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: #ffffff;
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+}
+
+.event-date-badge {
+  background-color: var(--highlight-color);
+  color: var(--accent-color);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #d0e1fd;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
