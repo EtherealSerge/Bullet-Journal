@@ -35,7 +35,7 @@
         <hr class="section-divider">
 
         <!-- Monthly Goals & Tasks -->
-        <h3>Monthly Goals & Taks</h3>
+        <h3>Monthly Overview</h3>
         <form id="monthly-form" class="task-form">
           <textarea id="monthly-input" rows="1" placeholder="New monthly task or goal..." required autocomplete="off"></textarea>
           <button type="submit">Add Task</button>
@@ -58,7 +58,12 @@
 
       <!-- Right Panel: Daily Rapid Logging & Symbol Legend -->
       <aside class="panel">
-        <h2 id="selected-date-display">Select a Date</h2>
+        <!-- Daily Navigation Controls -->
+        <div class="daily-controls">
+          <button id="prev-day" aria-label="Previous Day">&lt;</button>
+          <h2 id="selected-date-display">Select a Date</h2>
+          <button id="next-day" aria-label="Next Day">&gt;</button>
+        </div>
         <p class="panel-subtitle">Daily Log</p>
 
         <form id="daily-form" class="task-form">
