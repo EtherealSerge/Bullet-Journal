@@ -59,7 +59,7 @@
 
       <!-- Right Panel: Daily Rapid Logging & Symbol Legend -->
       <aside class="panel">
-        <!-- Daily Navigation Controls with Today Button -->
+        <!-- Daily Navigation Controls -->
         <div class="daily-controls">
           <button id="prev-day" aria-label="Previous Day">&lt;</button>
           <button id="today-daily-btn" class="today-btn">Today</button>
@@ -67,6 +67,9 @@
           <button id="next-day" aria-label="Next Day">&gt;</button>
         </div>
         <p class="panel-subtitle">Daily Log</p>
+
+        <!-- Migration Action Button -->
+        <button id="migrate-btn" class="migrate-btn">➡️ Migrate Pending Tasks</button>
 
         <form id="daily-form" class="task-form">
           <textarea id="daily-input" rows="1" placeholder="New daily entry..." required autocomplete="off"></textarea>
