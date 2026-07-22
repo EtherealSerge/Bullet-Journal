@@ -370,6 +370,14 @@ function renderAllViews() {
   renderAtAGlanceEvents();
 }
 
+// Resets calendar and daily view to actual Today
+function goToToday() {
+  const now = new Date();
+  selectedDateStr = formatDateKey(now);
+  currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  renderAllViews();
+}
+
 // ==========================================
 // 6. AUTO-EXPANDING TEXTAREA HELPERS
 // ==========================================
@@ -782,7 +790,6 @@ function changeMonth(delta) {
   renderAllViews();
 }
 
-// NEW: Shifts selectedDateStr forward (+1) or backward (-1) by days
 function changeDay(delta) {
   const [year, month, day] = selectedDateStr.split('-').map(Number);
   const dateObj = new Date(year, month - 1, day);
@@ -790,7 +797,6 @@ function changeDay(delta) {
 
   selectedDateStr = formatDateKey(dateObj);
 
-  // If new date moves to a different month/year, update calendar currentDate to match
   if (dateObj.getFullYear() !== currentDate.getFullYear() || dateObj.getMonth() !== currentDate.getMonth()) {
     currentDate = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
   }
@@ -805,9 +811,12 @@ function changeDay(delta) {
 document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
 document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
 
-// New Daily Navigation Event Listeners
 document.getElementById('prev-day').addEventListener('click', () => changeDay(-1));
 document.getElementById('next-day').addEventListener('click', () => changeDay(1));
+
+// Connect Today Buttons
+document.getElementById('today-cal-btn').addEventListener('click', goToToday);
+document.getElementById('today-daily-btn').addEventListener('click', goToToday);
 
 setupAutoExpandingTextarea(monthlyInput, monthlyForm);
 setupAutoExpandingTextarea(dailyInput, dailyForm);
