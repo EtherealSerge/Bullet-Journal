@@ -88,8 +88,27 @@ body {
 .panel-subtitle {
   color: #666;
   margin-top: 5px;
-  margin-bottom: 15px;
+  margin-bottom: 10px;
   font-size: 0.9rem;
+}
+
+/* Migrate Button Styling */
+.migrate-btn {
+  width: 100%;
+  background-color: #ffffff;
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 15px;
+  transition: all 0.15s ease-in-out;
+}
+
+.migrate-btn:hover {
+  background-color: var(--highlight-color);
 }
 
 /* Calendar & Daily Control Headers */
@@ -116,6 +135,24 @@ body {
   padding: 6px 14px;
   cursor: pointer;
   font-size: 16px;
+}
+
+.today-btn {
+  background-color: var(--highlight-color);
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
+}
+
+.today-btn:hover {
+  background-color: var(--accent-color);
+  color: #ffffff;
 }
 
 .calendar-weekdays {
@@ -409,22 +446,4 @@ body {
   .day-num {
     font-size: 13px;
   }
-}
-/* Today Button Styling */
-.today-btn {
-  background-color: var(--highlight-color);
-  color: var(--accent-color);
-  border: 1px solid var(--accent-color);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease-in-out;
-  white-space: nowrap;
-}
-
-.today-btn:hover {
-  background-color: var(--accent-color);
-  color: #ffffff;
 }
