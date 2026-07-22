@@ -370,12 +370,56 @@ function renderAllViews() {
   renderAtAGlanceEvents();
 }
 
-// Resets calendar and daily view to actual Today
 function goToToday() {
   const now = new Date();
   selectedDateStr = formatDateKey(now);
   currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
   renderAllViews();
+}
+
+// Scans past daily entries for uncompleted 'todo' tasks and copies them to Today
+function migratePendingTasks() {
+  const todayKey = todayStr;
+  let migratedCount = 0;
+
+  if (!journalData.daily[todayKey]) {
+    journalData.daily[todayKey] = [];
+  }
+
+  // Iterate over all dates stored in daily logs
+  Object.keys(journalData.daily).forEach(dateStr => {
+    // Check if the date is strictly in the past compared to today
+    if (dateStr < todayKey) {
+      const tasks = journalData.daily[dateStr] || [];
+
+      tasks.forEach(task => {
+        // Look for uncompleted tasks that are not soft-deleted
+        if (task.status === 'todo' && !task.deleted) {
+          // 1. Mark original past task as 'migrated' (>)
+          task.status = 'migrated';
+
+          // 2. Add copy to Today's log as 'todo' (•)
+          journalData.daily[todayKey].push({
+            id: Date.now() + Math.random(), // Unique timestamp ID
+            text: task.text,
+            status: 'todo',
+            deleted: false
+          });
+
+          migratedCount++;
+        }
+      });
+    }
+  });
+
+  if (migratedCount > 0) {
+    saveData();
+    // Switch active view to Today so migrated tasks are immediately visible
+    goToToday();
+    alert(`Successfully migrated ${migratedCount} pending task(s) to Today!`);
+  } else {
+    alert("No pending tasks found from past days to migrate.");
+  }
 }
 
 // ==========================================
@@ -817,6 +861,9 @@ document.getElementById('next-day').addEventListener('click', () => changeDay(1)
 // Connect Today Buttons
 document.getElementById('today-cal-btn').addEventListener('click', goToToday);
 document.getElementById('today-daily-btn').addEventListener('click', goToToday);
+
+// Connect Task Migration Button
+document.getElementById('migrate-btn').addEventListener('click', migratePendingTasks);
 
 setupAutoExpandingTextarea(monthlyInput, monthlyForm);
 setupAutoExpandingTextarea(dailyInput, dailyForm);
