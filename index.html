@@ -12,7 +12,16 @@
     <!-- Header with Title and Google Drive Sync Control -->
     <header class="app-header">
       <h1>📓 Bullet Journal</h1>
-      <button id="sync-btn" class="sync-button" disabled>🔄 Sync with Google Drive</button>
+      <div class="header-actions">
+        <div class="search-container" id="search-container">
+          <button id="search-btn" class="search-btn" aria-label="Search entries" title="Search (click or press /)">🔍</button>
+          <div class="search-expanded" id="search-expanded">
+            <input type="text" id="search-input" class="search-input" placeholder="Search all entries..." aria-label="Search entries">
+            <div class="search-results" id="search-results"></div>
+          </div>
+        </div>
+        <button id="sync-btn" class="sync-button" disabled>🔄 Sync with Google Drive</button>
+      </div>
     </header>
 
     <div class="layout-grid">

@@ -878,5 +878,156 @@ glanceForm.addEventListener('submit', (e) => {
   renderAtAGlanceEvents();
 });
 
+// ==========================================
+// 9. SEARCH FUNCTIONALITY
+// ==========================================
+
+const searchBtn = document.getElementById('search-btn');
+const searchExpanded = document.getElementById('search-expanded');
+const searchInput = document.getElementById('search-input');
+const searchResults = document.getElementById('search-results');
+
+function highlightMatch(text, query) {
+  if (!query) return text;
+  const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
+  return text.replace(regex, '<mark class="result-highlight">$1</mark>');
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function formatResultDate(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const dateObj = new Date(year, month - 1, day);
+  return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function getStatusLabel(status) {
+  const labels = { todo: 'Task', done: 'Done', migrated: 'Migrated', note: 'Note', event: 'Event' };
+  return labels[status] || status;
+}
+
+function searchEntries(query) {
+  if (!query || query.trim().length < 2) {
+    searchResults.innerHTML = '';
+    return;
+  }
+
+  const normalizedQuery = query.toLowerCase().trim();
+  const results = [];
+
+  Object.entries(journalData.monthly || {}).forEach(([monthKey, tasks]) => {
+    tasks.forEach(task => {
+      if (task.deleted) return;
+      if (task.text.toLowerCase().includes(normalizedQuery)) {
+        results.push({
+          text: task.text,
+          date: monthKey + '-01',
+          type: getStatusLabel(task.status),
+          status: task.status,
+          onSelect: () => {
+            currentDate = new Date(monthKey.split('-')[0], parseInt(monthKey.split('-')[1]) - 1, 1);
+            selectedDateStr = formatDateKey(currentDate);
+            closeSearch();
+            renderAllViews();
+          }
+        });
+      }
+    });
+  });
+
+  Object.entries(journalData.daily || {}).forEach(([dateStr, tasks]) => {
+    tasks.forEach(task => {
+      if (task.deleted) return;
+      if (task.text.toLowerCase().includes(normalizedQuery)) {
+        results.push({
+          text: task.text,
+          date: dateStr,
+          type: getStatusLabel(task.status),
+          status: task.status,
+          onSelect: () => {
+            selectedDateStr = dateStr;
+            const [year, month] = dateStr.split('-').map(Number);
+            currentDate = new Date(year, month - 1, 1);
+            closeSearch();
+            renderAllViews();
+          }
+        });
+      }
+    });
+  });
+
+  results.sort((a, b) => b.date.localeCompare(a.date));
+
+  searchResults.innerHTML = '';
+  if (results.length === 0) {
+    searchResults.innerHTML = '<div class="search-empty">No matches found</div>';
+    return;
+  }
+
+  results.slice(0, 50).forEach(result => {
+    const item = document.createElement('div');
+    item.className = 'search-result-item';
+    item.innerHTML = `
+      <div class="result-text">${highlightMatch(result.text, normalizedQuery)}</div>
+      <div class="result-meta">
+        <span class="result-date">${formatResultDate(result.date)}</span>
+        <span class="result-type">${result.type}</span>
+      </div>
+    `;
+    item.addEventListener('click', result.onSelect);
+    searchResults.appendChild(item);
+  });
+}
+
+function openSearch() {
+  searchExpanded.classList.add('open');
+  searchInput.focus();
+  searchInput.value = '';
+  searchResults.innerHTML = '';
+}
+
+function closeSearch() {
+  searchExpanded.classList.remove('open');
+  searchInput.value = '';
+  searchResults.innerHTML = '';
+}
+
+function handleOutsideClick(e) {
+  if (!searchExpanded.contains(e.target) && !searchBtn.contains(e.target)) {
+    closeSearch();
+  }
+}
+
+searchBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (searchExpanded.classList.contains('open')) {
+    closeSearch();
+  } else {
+    openSearch();
+  }
+});
+
+searchInput.addEventListener('input', (e) => {
+  searchEntries(e.target.value);
+});
+
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeSearch();
+    searchInput.blur();
+  }
+});
+
+document.addEventListener('click', handleOutsideClick);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && e.target !== searchInput && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    openSearch();
+  }
+});
+
 // Initial Master Render
 renderAllViews();
