@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Minimalist Bullet Journal</title>
+  <link type="image/png" sizes="96x96" rel="icon" href="https://img.icons8.com/ios11/96/journal.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,16 +12,24 @@
   <div class="app-container">
     <!-- Header with Title and Google Drive Sync Control -->
     <header class="app-header">
-      <h1>📓 Bullet Journal</h1>
-      <div class="header-actions">
-        <div class="search-container" id="search-container">
-          <button id="search-btn" class="search-btn" aria-label="Search entries" title="Search (click or press /)">🔍</button>
-          <div class="search-expanded" id="search-expanded">
-            <input type="text" id="search-input" class="search-input" placeholder="Search all entries..." aria-label="Search entries">
-            <div class="search-results" id="search-results"></div>
+      <div class="header-row">
+        <h1>📓 Bullet Journal</h1>
+        <div class="header-actions">
+          <div class="search-container" id="search-container">
+            <button id="search-btn" class="search-btn" aria-label="Search entries" title="Search (click or press /)">🔍</button>
+            <div class="search-expanded" id="search-expanded">
+              <input type="text" id="search-input" class="search-input" placeholder="Search all entries..." aria-label="Search entries">
+              <div class="search-results" id="search-results"></div>
+            </div>
           </div>
+          <button id="sync-btn" class="sync-button" disabled>🔄 Sync with Google Drive</button>
         </div>
-        <button id="sync-btn" class="sync-button" disabled>🔄 Sync with Google Drive</button>
+      </div>
+      <div class="quick-note-bar" id="quick-note-bar">
+        <span class="quick-note-trigger" id="quick-note-trigger">+</span>
+        <div class="quick-note-input-wrap">
+          <input type="text" id="quick-note-input" placeholder="Quick note..." autocomplete="off">
+        </div>
       </div>
     </header>
 

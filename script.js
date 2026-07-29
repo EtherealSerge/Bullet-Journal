@@ -892,7 +892,44 @@ glanceForm.addEventListener('submit', (e) => {
 });
 
 // ==========================================
-// 9. SEARCH FUNCTIONALITY
+// 9. QUICK NOTE CAPTURE
+// ==========================================
+
+const quickNoteBar = document.getElementById('quick-note-bar');
+const quickNoteInput = document.getElementById('quick-note-input');
+const quickNoteTrigger = document.getElementById('quick-note-trigger');
+
+quickNoteTrigger.addEventListener('click', () => {
+  quickNoteBar.classList.add('open');
+  quickNoteInput.focus();
+});
+
+quickNoteInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const text = quickNoteInput.value.trim();
+    if (text) {
+      const todayKey = formatDateKey(new Date());
+      if (!journalData.daily[todayKey]) {
+        journalData.daily[todayKey] = [];
+      }
+      journalData.daily[todayKey].push({ id: crypto.randomUUID(), text, status: 'note', deleted: false });
+      saveData();
+      quickNoteInput.value = '';
+      quickNoteBar.classList.remove('open');
+      renderAllViews();
+    }
+  }
+});
+
+quickNoteInput.addEventListener('blur', () => {
+  if (!quickNoteInput.value.trim()) {
+    quickNoteBar.classList.remove('open');
+  }
+});
+
+// ==========================================
+// 10. SEARCH FUNCTIONALITY
 // ==========================================
 
 const searchBtn = document.getElementById('search-btn');
