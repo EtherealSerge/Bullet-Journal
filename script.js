@@ -363,7 +363,7 @@ function getSymbol(status) {
 }
 
 function getNextStatus(currentStatus) {
-  const sequence = ['todo', 'done', 'migrated', 'note'];
+  const sequence = ['todo', 'done', 'migrated', 'note', 'event'];
   const currentIndex = sequence.indexOf(currentStatus);
   if (currentIndex === -1) return 'todo';
   return sequence[(currentIndex + 1) % sequence.length];
@@ -546,9 +546,22 @@ function renderCalendar() {
     const weekdayAbbr = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
     const cellDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
+    const dayEntries = journalData.daily[cellDateStr] || [];
+    const hasEvents = dayEntries.some(e => e.status === 'event' && !e.deleted);
+    const hasTasks = dayEntries.some(e => e.status === 'todo' && !e.deleted);
+
+    let stripHtml = '';
+    if (hasEvents || hasTasks) {
+      const parts = [];
+      if (hasEvents) parts.push('<span class="strip-event"></span>');
+      if (hasTasks) parts.push('<span class="strip-task"></span>');
+      stripHtml = `<div class="day-strip">${parts.join('')}</div>`;
+    }
+
     dayCell.innerHTML = `
       <span class="weekday-tag">${weekdayAbbr}</span>
       <span class="day-num">${day}</span>
+      ${stripHtml}
     `;
     
     if (cellDateStr === selectedDateStr) {
