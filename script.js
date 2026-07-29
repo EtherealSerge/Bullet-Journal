@@ -293,7 +293,6 @@ async function uploadToDrive() {
 // ==========================================
 let currentDate = new Date();
 let selectedDateStr = formatDateKey(new Date());
-const todayStr = formatDateKey(new Date());
 
 let journalData = JSON.parse(localStorage.getItem('bujo_data')) || {
   monthly: {},
@@ -339,11 +338,17 @@ function formatFriendlyDate(dateStr) {
   });
 }
 
+let saveDebounceTimer = null;
+
 function saveData() {
   localStorage.setItem('bujo_data', JSON.stringify(journalData));
-  if (loadCachedToken()) {
-    uploadToDrive();
-  }
+  
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(() => {
+    if (loadCachedToken()) {
+      uploadToDrive();
+    }
+  }, 1000);
 }
 
 function getSymbol(status) {
@@ -358,8 +363,9 @@ function getSymbol(status) {
 }
 
 function getNextStatus(currentStatus) {
-  const sequence = ['todo', 'done', 'migrated', 'note', 'event'];
+  const sequence = ['todo', 'done', 'migrated', 'note'];
   const currentIndex = sequence.indexOf(currentStatus);
+  if (currentIndex === -1) return 'todo';
   return sequence[(currentIndex + 1) % sequence.length];
 }
 
@@ -379,7 +385,7 @@ function goToToday() {
 
 // Scans past daily entries for uncompleted 'todo' tasks and copies them to Today
 function migratePendingTasks() {
-  const todayKey = todayStr;
+  const todayKey = formatDateKey(new Date());
   let migratedCount = 0;
 
   if (!journalData.daily[todayKey]) {
@@ -400,7 +406,7 @@ function migratePendingTasks() {
 
           // 2. Add copy to Today's log as 'todo' (•)
           journalData.daily[todayKey].push({
-            id: Date.now() + Math.random(), // Unique timestamp ID
+            id: crypto.randomUUID(),
             text: task.text,
             status: 'todo',
             deleted: false
@@ -447,6 +453,68 @@ function setupAutoExpandingTextarea(textarea, form) {
   });
 }
 
+// Shared edit handler for task/event items
+function setupEditHandler(textSpan, editBtn, leftDiv, item, onSave) {
+  let isEditing = false;
+
+  editBtn.addEventListener('click', () => {
+    if (!isEditing) {
+      isEditing = true;
+      editBtn.textContent = '💾';
+      editBtn.title = 'Save Changes';
+
+      const editInput = document.createElement('textarea');
+      editInput.className = 'edit-input';
+      editInput.rows = 1;
+      editInput.value = item.text;
+
+      leftDiv.replaceChild(editInput, textSpan);
+      autoResizeTextarea(editInput);
+      editInput.focus();
+
+      editInput.addEventListener('input', () => autoResizeTextarea(editInput));
+
+      const commitEdit = () => {
+        const newText = editInput.value.trim();
+        if (newText && newText !== item.text) {
+          item.text = newText;
+          onSave();
+        } else {
+          textSpan.textContent = item.text;
+          if (leftDiv.contains(editInput)) {
+            leftDiv.replaceChild(textSpan, editInput);
+          }
+          editBtn.textContent = '✏️';
+          editBtn.title = 'Edit Entry';
+          isEditing = false;
+        }
+      };
+
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          commitEdit();
+        }
+      });
+    } else {
+      const editInput = leftDiv.querySelector('.edit-input');
+      if (editInput) {
+        const newText = editInput.value.trim();
+        if (newText && newText !== item.text) {
+          item.text = newText;
+          onSave();
+        } else {
+          textSpan.textContent = item.text;
+          leftDiv.replaceChild(textSpan, editInput);
+          editBtn.textContent = '✏️';
+          editBtn.title = 'Edit Entry';
+          isEditing = false;
+        }
+      }
+    }
+  });
+}
+
 // ==========================================
 // 7. RENDERING LOGIC
 // ==========================================
@@ -487,7 +555,7 @@ function renderCalendar() {
       dayCell.classList.add('active');
     }
 
-    if (cellDateStr === todayStr) {
+    if (cellDateStr === formatDateKey(new Date())) {
       dayCell.classList.add('today');
     }
 
@@ -638,65 +706,9 @@ function renderAtAGlanceEvents() {
         renderAllViews();
       });
 
-      let isEditing = false;
-
-      editBtn.addEventListener('click', () => {
-        if (!isEditing) {
-          isEditing = true;
-          editBtn.textContent = '💾';
-          editBtn.title = 'Save Changes';
-
-          const editInput = document.createElement('textarea');
-          editInput.className = 'edit-input';
-          editInput.rows = 1;
-          editInput.value = event.text;
-
-          leftDiv.replaceChild(editInput, textSpan);
-          autoResizeTextarea(editInput);
-          editInput.focus();
-
-          editInput.addEventListener('input', () => autoResizeTextarea(editInput));
-
-          const commitEdit = () => {
-            const newText = editInput.value.trim();
-            if (newText && newText !== event.text) {
-              event.text = newText;
-              saveData();
-              renderAllViews();
-            } else {
-              textSpan.textContent = event.text;
-              if (leftDiv.contains(editInput)) {
-                leftDiv.replaceChild(textSpan, editInput);
-              }
-              editBtn.textContent = '✏️';
-              editBtn.title = 'Edit Event';
-              isEditing = false;
-            }
-          };
-
-          editInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              commitEdit();
-            }
-          });
-        } else {
-          const editInput = leftDiv.querySelector('.edit-input');
-          if (editInput) {
-            const newText = editInput.value.trim();
-            if (newText && newText !== event.text) {
-              event.text = newText;
-              saveData();
-              renderAllViews();
-            } else {
-              textSpan.textContent = event.text;
-              leftDiv.replaceChild(textSpan, editInput);
-              editBtn.textContent = '✏️';
-              editBtn.title = 'Edit Event';
-              isEditing = false;
-            }
-          }
-        }
+      setupEditHandler(textSpan, editBtn, leftDiv, event, () => {
+        saveData();
+        renderAllViews();
       });
 
       actionsDiv.appendChild(editBtn);
@@ -751,64 +763,7 @@ function createTaskElement(item, onToggleSymbol, onDelete, onSaveText) {
   deleteBtn.title = 'Delete Entry';
   deleteBtn.addEventListener('click', onDelete);
 
-  let isEditing = false;
-
-  editBtn.addEventListener('click', () => {
-    if (!isEditing) {
-      isEditing = true;
-      editBtn.textContent = '💾';
-      editBtn.title = 'Save Changes';
-
-      const editInput = document.createElement('textarea');
-      editInput.className = 'edit-input';
-      editInput.rows = 1;
-      editInput.value = item.text;
-
-      leftDiv.replaceChild(editInput, textSpan);
-      autoResizeTextarea(editInput);
-      editInput.focus();
-
-      editInput.addEventListener('input', () => autoResizeTextarea(editInput));
-
-      const commitEdit = () => {
-        const newText = editInput.value.trim();
-        if (newText && newText !== item.text) {
-          item.text = newText;
-          onSaveText();
-        } else {
-          textSpan.textContent = item.text;
-          if (leftDiv.contains(editInput)) {
-            leftDiv.replaceChild(textSpan, editInput);
-          }
-          editBtn.textContent = '✏️';
-          editBtn.title = 'Edit Entry';
-          isEditing = false;
-        }
-      };
-
-      editInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          commitEdit();
-        }
-      });
-    } else {
-      const editInput = leftDiv.querySelector('.edit-input');
-      if (editInput) {
-        const newText = editInput.value.trim();
-        if (newText && newText !== item.text) {
-          item.text = newText;
-          onSaveText();
-        } else {
-          textSpan.textContent = item.text;
-          leftDiv.replaceChild(textSpan, editInput);
-          editBtn.textContent = '✏️';
-          editBtn.title = 'Edit Entry';
-          isEditing = false;
-        }
-      }
-    }
-  });
+  setupEditHandler(textSpan, editBtn, leftDiv, item, onSaveText);
 
   actionsDiv.appendChild(editBtn);
   actionsDiv.appendChild(deleteBtn);
@@ -826,7 +781,7 @@ function changeMonth(delta) {
                          currentDate.getMonth() === new Date().getMonth();
 
   if (isCurrentMonth) {
-    selectedDateStr = todayStr;
+    selectedDateStr = formatDateKey(new Date());
   } else {
     selectedDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`;
   }
@@ -879,7 +834,7 @@ monthlyForm.addEventListener('submit', (e) => {
     journalData.monthly[monthKey] = [];
   }
 
-  journalData.monthly[monthKey].push({ id: Date.now(), text: text, status: 'todo', deleted: false });
+  journalData.monthly[monthKey].push({ id: crypto.randomUUID(), text: text, status: 'todo', deleted: false });
   saveData();
   resetTextareaHeight(monthlyInput);
   renderMonthlyTasks();
@@ -894,7 +849,7 @@ dailyForm.addEventListener('submit', (e) => {
     journalData.daily[selectedDateStr] = [];
   }
 
-  journalData.daily[selectedDateStr].push({ id: Date.now(), text: text, status: 'todo', deleted: false });
+  journalData.daily[selectedDateStr].push({ id: crypto.randomUUID(), text: text, status: 'todo', deleted: false });
   saveData();
   resetTextareaHeight(dailyInput);
   renderDailyTasks();
@@ -915,7 +870,7 @@ glanceForm.addEventListener('submit', (e) => {
     journalData.daily[targetDateStr] = [];
   }
 
-  journalData.daily[targetDateStr].push({ id: Date.now(), text: text, status: 'event', deleted: false });
+  journalData.daily[targetDateStr].push({ id: crypto.randomUUID(), text: text, status: 'event', deleted: false });
   
   saveData();
   resetTextareaHeight(glanceInput);
