@@ -168,7 +168,7 @@ function mergeJournalData(local, cloud) {
         itemMap.set(key, {
           ...localItem,
           text: cloudItem.text || localItem.text,
-          status: cloudItem.status || localItem.status,
+          status: localItem.status === 'migrated' ? 'migrated' : (cloudItem.status || localItem.status),
           deleted: isDeleted
         });
       }
