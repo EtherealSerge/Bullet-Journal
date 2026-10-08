@@ -166,7 +166,7 @@ async function downloadAndMergeFromDrive() {
       let cloud = { monthly: {}, daily: {} };
       for (const file of files) {
         const response = await driveRequest(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`);
-        cloud = mergeJournalData(cloud, validateJournalData(await response.json()));
+        cloud = mergeJournalData(cloud, sanitizeJournalData(await response.json()).data);
       }
       if (document.querySelector('.edit-input')) {
         throw new Error('Finish editing an entry before syncing');
@@ -194,8 +194,8 @@ async function downloadAndMergeFromDrive() {
 }
 
 function mergeJournalData(local, cloud) {
-  local = validateJournalData(local);
-  cloud = validateJournalData(cloud);
+  local = sanitizeJournalData(local).data;
+  cloud = sanitizeJournalData(cloud).data;
   const merged = { monthly: {}, daily: {} };
 
   function mergeLists(localList = [], cloudList = []) {
@@ -327,17 +327,60 @@ function validateJournalData(data) {
   return normalized;
 }
 
+// Lenient reader for data that already exists (local save, Drive copy).
+// Never throws on a bad entry: fixes what it can and returns the rest in
+// `rejected` so nothing is silently lost.
+function sanitizeJournalData(data) {
+  const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!isObject(data)) throw new Error('Not a journal data file.');
+  const out = { monthly: {}, daily: {} };
+  const rejected = [];
+  for (const section of ['monthly', 'daily']) {
+    const map = isObject(data[section]) ? data[section] : {};
+    for (const [key, items] of Object.entries(map)) {
+      if (!Array.isArray(items)) { rejected.push({ section, key, items }); continue; }
+      const seen = new Set();
+      out[section][key] = [];
+      items.forEach((item, index) => {
+        if (!isObject(item) || typeof item.text !== 'string') {
+          rejected.push({ section, key, item }); return;
+        }
+        const entry = {
+          text: item.text,
+          status: ['todo', 'done', 'migrated', 'note', 'event'].includes(item.status) ? item.status : 'todo',
+          deleted: item.deleted === true,
+          updatedAt: Number.isFinite(item.updatedAt) && item.updatedAt >= 0 ? Math.floor(item.updatedAt) : 0
+        };
+        let id = typeof item.id === 'string' && item.id ? item.id : null;
+        // Duplicate ids (or duplicate id-less texts) get a fresh id so both survive.
+        if (!id && seen.has(entry.text)) id = crypto.randomUUID();
+        if (id && seen.has(id)) id = crypto.randomUUID();
+        if (id) { entry.id = id; seen.add(id); } else seen.add(entry.text);
+        out[section][key].push(entry);
+      });
+    }
+  }
+  return { data: out, rejected };
+}
+
 function loadJournal() {
+  const raw = localStorage.getItem('bujo_data');
+  if (raw === null) return { monthly: {}, daily: {} };
+  // One-time untouched copy of whatever was stored before this version ran.
   try {
-    const raw = localStorage.getItem('bujo_data');
-    if (raw === null) return { monthly: {}, daily: {} };
-    damagedSave = raw;
-    const data = validateJournalData(JSON.parse(raw));
-    damagedSave = null;
+    if (localStorage.getItem('bujo_data_raw_backup') === null) localStorage.setItem('bujo_data_raw_backup', raw);
+  } catch { /* quota: the original bujo_data is still untouched */ }
+  try {
+    const { data, rejected } = sanitizeJournalData(JSON.parse(raw));
+    if (rejected.length) {
+      try { localStorage.setItem('bujo_data_rejected', JSON.stringify(rejected)); } catch { /* optional */ }
+      notify(`${rejected.length} unreadable item(s) were set aside, the rest loaded. Export a backup.`);
+    }
     return data;
   } catch {
+    damagedSave = raw;
     storageRecoveryRequired = true;
-    notify('Saved data could not be read. The original is untouched. Export the damaged save, then import a valid backup. Edits cannot be saved yet.');
+    notify('Saved data is not valid JSON. The original is untouched. Export the damaged save, then import a backup. Edits cannot be saved yet.');
     return { monthly: {}, daily: {} };
   }
 }
