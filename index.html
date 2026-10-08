@@ -19,6 +19,10 @@
     <header class="app-header">
       <div class="header-row">
         <h1>📓 Bullet Journal</h1>
+        <div class="journal-toggle" id="journal-toggle" role="group" aria-label="Journal mode">
+          <button type="button" class="journal-toggle-btn active" data-journal="personal" aria-pressed="true">Personal</button>
+          <button type="button" class="journal-toggle-btn" data-journal="work" aria-pressed="false">Work</button>
+        </div>
         <div class="header-actions">
           <div class="search-container" id="search-container">
             <button id="search-btn" aria-expanded="false" aria-controls="search-expanded" class="search-btn" aria-label="Search entries" title="Search (click or press /)">🔍</button>

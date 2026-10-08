@@ -48,6 +48,42 @@ body {
   font-size: 1.8rem;
 }
 
+.journal-toggle {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  overflow: hidden;
+  background-color: var(--panel-bg);
+  flex-shrink: 0;
+}
+
+.journal-toggle-btn {
+  background: none;
+  border: none;
+  padding: 6px 14px;
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  min-height: 36px;
+}
+
+.journal-toggle-btn + .journal-toggle-btn {
+  border-left: 1px solid var(--border-color);
+}
+
+.journal-toggle-btn:hover {
+  background-color: var(--highlight-color);
+  color: var(--accent-color);
+}
+
+.journal-toggle-btn.active {
+  background-color: var(--accent-color);
+  color: #ffffff;
+}
+
 .quick-note-bar {
   display: flex;
   align-items: center;
@@ -659,6 +695,11 @@ body {
     text-align: center;
   }
 
+  .journal-toggle {
+    width: fit-content;
+    margin: 0 auto;
+  }
+
   .sync-button {
     width: 100%;
   }
@@ -733,4 +774,17 @@ button.quick-note-trigger { border: 0; background: none; color: #555; }
 @media (min-width: 768px) and (max-width: 1000px) {
   #glance-form { flex-direction: column; }
   #glance-form > * { width: 100%; max-width: none; }
+}
+
+/* Work journal theme: warm amber accents over the same layout. */
+body.journal-work {
+  --bg-color: #f8f4ee;
+  --accent-color: #c07a3a;
+  --highlight-color: #fbf0e3;
+}
+
+body.journal-work .day-cell.active .weekday-tag { color: #f3d9be; }
+body.journal-work .event-date-badge { border-color: #e6c9a4; }
+body.journal-work :where(button, input, textarea, select, [tabindex]):focus-visible {
+  outline-color: #8a5a2b;
 }

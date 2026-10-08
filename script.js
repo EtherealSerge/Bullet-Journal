@@ -6,7 +6,38 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
 let tokenClient;
 let accessToken = null;
-let driveFileId = null;
+
+// Each journal keeps its own local save and its own Drive app-data file.
+// Personal keeps the legacy key and file name so existing syncs carry over.
+const JOURNALS = {
+  personal: { label: 'Personal', dataKey: 'bujo_data', rawBackupKey: 'bujo_data_raw_backup',
+    rejectedKey: 'bujo_data_rejected', unsyncedKey: 'bujo_unsynced', driveName: 'bujo_data.json' },
+  work: { label: 'Work', dataKey: 'bujo_data_work', rawBackupKey: 'bujo_data_work_raw_backup',
+    rejectedKey: 'bujo_data_work_rejected', unsyncedKey: 'bujo_unsynced_work', driveName: 'bujo_data_work.json' }
+};
+let journalMode = 'personal';
+
+function storageKeys() {
+  return JOURNALS[journalMode];
+}
+
+// Restore the journal the user last had open.
+try {
+  const savedMode = localStorage.getItem('bujo_mode');
+  if (savedMode && JOURNALS[savedMode]) journalMode = savedMode;
+} catch { /* keep the personal default */ }
+
+// Per-journal Drive app-data file IDs, re-discovered by file name on every sync.
+const driveFileId = { personal: null, work: null };
+
+function applyJournalTheme() {
+  const isWork = journalMode === 'work';
+  document.body.classList.toggle('journal-work', isWork);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', isWork ? '#c07a3a' : '#4a6fa5');
+}
+
+applyJournalTheme();
 
 const syncBtn = document.getElementById('sync-btn');
 
@@ -117,7 +148,7 @@ syncBtn.addEventListener('click', () => {
 // ==========================================
 let syncRunning = false;
 let syncRequested = false;
-let unsyncedChanges = readStorage('bujo_unsynced') !== 'false';
+let unsyncedChanges = readStorage(storageKeys().unsyncedKey) !== 'false';
 let changeGeneration = 0;
 
 async function driveRequest(url, options = {}) {
@@ -150,7 +181,7 @@ async function downloadAndMergeFromDrive() {
       syncRequested = false;
       // Read before EVERY upload, including debounced edits. Merge all duplicate
       // files too: two devices can both create a file on their first sync.
-      const query = encodeURIComponent("name='bujo_data.json' and trashed=false");
+      const query = encodeURIComponent(`name='${storageKeys().driveName}' and trashed=false`);
       let pageToken = '';
       const files = [];
       do {
@@ -162,7 +193,7 @@ async function downloadAndMergeFromDrive() {
         files.push(...result.files);
         pageToken = result.nextPageToken || '';
       } while (pageToken);
-      driveFileId = files[0]?.id || null;
+      driveFileId[journalMode] = files[0]?.id || null;
       let cloud = { monthly: {}, daily: {} };
       for (const file of files) {
         const response = await driveRequest(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`);
@@ -179,13 +210,13 @@ async function downloadAndMergeFromDrive() {
       const generation = changeGeneration;
       await uploadToDrive(JSON.stringify(journalData));
       unsyncedChanges = changeGeneration !== generation;
-      try { localStorage.setItem('bujo_unsynced', String(unsyncedChanges)); } catch { /* status only */ }
+      try { localStorage.setItem(storageKeys().unsyncedKey, String(unsyncedChanges)); } catch { /* status only */ }
       if (unsyncedChanges) syncRequested = true;
     } while (syncRequested && loadCachedToken());
     notify(unsyncedChanges ? 'Changes pending. Sign in to finish syncing.' : 'Journal synced to Drive.');
   } catch (error) {
     unsyncedChanges = true;
-    try { localStorage.setItem('bujo_unsynced', 'true'); } catch { /* status only */ }
+    try { localStorage.setItem(storageKeys().unsyncedKey, 'true'); } catch { /* status only */ }
     notify(`${error.message} Local edits are kept. Use Sync to retry.`);
   } finally {
     syncRunning = false;
@@ -253,21 +284,21 @@ function mergeJournalData(local, cloud) {
 // This serializes one tab, but is NOT a cross-device transaction. Truly
 // simultaneous writes can still race between download and upload.
 async function uploadToDrive(snapshot) {
-  if (driveFileId) {
-    await driveRequest(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(driveFileId)}?uploadType=media`, {
+  if (driveFileId[journalMode]) {
+    await driveRequest(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(driveFileId[journalMode])}?uploadType=media`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: snapshot
     });
   } else {
     const boundary = 'bujo_' + crypto.randomUUID();
-    const metadata = { name: 'bujo_data.json', mimeType: 'application/json', parents: ['appDataFolder'] };
+    const metadata = { name: storageKeys().driveName, mimeType: 'application/json', parents: ['appDataFolder'] };
     const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${snapshot}\r\n--${boundary}--\r\n`;
     const result = await (await driveRequest('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
       method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body
     })).json();
     if (typeof result.id !== 'string') throw new Error('Drive did not return a file ID.');
-    driveFileId = result.id;
+    driveFileId[journalMode] = result.id;
   }
 }
 
@@ -364,16 +395,17 @@ function sanitizeJournalData(data) {
 }
 
 function loadJournal() {
-  const raw = localStorage.getItem('bujo_data');
+  const keys = storageKeys();
+  const raw = localStorage.getItem(keys.dataKey);
   if (raw === null) return { monthly: {}, daily: {} };
   // One-time untouched copy of whatever was stored before this version ran.
   try {
-    if (localStorage.getItem('bujo_data_raw_backup') === null) localStorage.setItem('bujo_data_raw_backup', raw);
-  } catch { /* quota: the original bujo_data is still untouched */ }
+    if (localStorage.getItem(keys.rawBackupKey) === null) localStorage.setItem(keys.rawBackupKey, raw);
+  } catch { /* quota: the original save is still untouched */ }
   try {
     const { data, rejected } = sanitizeJournalData(JSON.parse(raw));
     if (rejected.length) {
-      try { localStorage.setItem('bujo_data_rejected', JSON.stringify(rejected)); } catch { /* optional */ }
+      try { localStorage.setItem(keys.rejectedKey, JSON.stringify(rejected)); } catch { /* optional */ }
       notify(`${rejected.length} unreadable item(s) were set aside, the rest loaded. Export a backup.`);
     }
     return data;
@@ -434,7 +466,7 @@ function persistJournal() {
     return false;
   }
   try {
-    localStorage.setItem('bujo_data', JSON.stringify(journalData));
+    localStorage.setItem(storageKeys().dataKey, JSON.stringify(journalData));
     return true;
   } catch {
     notify('Local save failed (storage may be full or unavailable). Export a backup before leaving.');
@@ -446,7 +478,7 @@ function saveData() {
   changeGeneration++;
   unsyncedChanges = true;
   if (!persistJournal()) return;
-  try { localStorage.setItem('bujo_unsynced', 'true'); } catch { /* status only */ }
+  try { localStorage.setItem(storageKeys().unsyncedKey, 'true'); } catch { /* status only */ }
   updateSyncStatus();
   clearTimeout(saveDebounceTimer);
   saveDebounceTimer = setTimeout(() => {
@@ -1274,10 +1306,10 @@ function downloadJSON(text, filename) {
 
 document.getElementById('export-btn').addEventListener('click', () => {
   downloadJSON(JSON.stringify({ format: 'bujo-backup', version: 1,
-    exportedAt: new Date().toISOString(), data: journalData }, null, 2), `bujo-backup-${formatDateKey(new Date())}.json`);
+    exportedAt: new Date().toISOString(), data: journalData }, null, 2), `bujo-${journalMode}-backup-${formatDateKey(new Date())}.json`);
 });
 document.getElementById('recovery-btn').addEventListener('click', () => {
-  if (damagedSave !== null) downloadJSON(damagedSave, 'bujo-damaged-save.json');
+  if (damagedSave !== null) downloadJSON(damagedSave, `bujo-${journalMode}-damaged-save.json`);
   else notify('No damaged save is available to export.');
 });
 document.getElementById('recovery-btn').hidden = damagedSave === null;
@@ -1298,7 +1330,7 @@ importInput.addEventListener('change', async () => {
     if (!window.confirm(message)) return;
     const merged = mergeJournalData(journalData, imported);
     // Persist BEFORE replacing memory state. A quota error leaves both untouched.
-    localStorage.setItem('bujo_data', JSON.stringify(merged));
+    localStorage.setItem(storageKeys().dataKey, JSON.stringify(merged));
     journalData = merged;
     storageRecoveryRequired = false;
     damagedSave = null;
@@ -1312,6 +1344,51 @@ importInput.addEventListener('change', async () => {
     importInput.value = '';
   }
 });
+
+// ==========================================
+// 12. PERSONAL / WORK JOURNAL TOGGLE
+// ==========================================
+const journalToggleBtns = Array.from(document.querySelectorAll('#journal-toggle .journal-toggle-btn'));
+
+function setJournalMode(mode) {
+  if (!JOURNALS[mode] || mode === journalMode) return;
+  if (syncRunning) { notify('Wait for the sync to finish before switching journals.'); return; }
+  if (document.querySelector('.edit-input')) { notify('Save or cancel the open edit before switching journals.'); return; }
+
+  // Persist the sync status of the journal being left.
+  try { localStorage.setItem(storageKeys().unsyncedKey, String(unsyncedChanges)); } catch { /* status only */ }
+
+  journalMode = mode;
+  try { localStorage.setItem('bujo_mode', mode); } catch { /* preference only */ }
+
+  applyJournalTheme();
+  journalToggleBtns.forEach(btn => {
+    const active = btn.dataset.journal === mode;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+
+  // Per-journal state: recovery flags, in-flight sync, Drive file ID.
+  storageRecoveryRequired = false;
+  damagedSave = null;
+  document.getElementById('recovery-btn').hidden = true;
+  syncRequested = false;
+  changeGeneration = 0;
+
+  journalData = loadJournal();
+  unsyncedChanges = readStorage(storageKeys().unsyncedKey) !== 'false';
+  driveFileId[mode] = null;
+  renderAllViews();
+  updateSyncStatus();
+  notify(`Switched to the ${JOURNALS[mode].label} journal.`);
+}
+
+journalToggleBtns.forEach(btn => {
+  const active = btn.dataset.journal === journalMode;
+  btn.classList.toggle('active', active);
+  btn.setAttribute('aria-pressed', String(active));
+});
+journalToggleBtns.forEach(btn => btn.addEventListener('click', () => setJournalMode(btn.dataset.journal)));
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => {

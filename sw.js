@@ -2,7 +2,7 @@
  * Bump VERSION whenever a shell asset changes. New workers wait until old
  * tabs close so a running tab never mixes app versions.
  */
-const VERSION = 'bujo-shell-v2-migrate-popup';
+const VERSION = 'bujo-shell-v3-journal-toggle';
 const CACHE_PREFIX = `bujo-${self.registration.scope}-`;
 const CACHE_NAME = CACHE_PREFIX + VERSION;
 const SHELL = ['./', './index.html', './script.js', './style.css',
