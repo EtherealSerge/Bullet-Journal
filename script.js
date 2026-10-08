@@ -528,9 +528,9 @@ function migratePendingTasks() {
     saveData();
     // Switch active view to Today so migrated tasks are immediately visible
     goToToday();
-    notify(`Migrated ${migratedCount} pending task(s) to Today.`);
+    window.alert(`Successfully migrated ${migratedCount} pending task(s) to Today!`);
   } else {
-    notify('No pending tasks found from past days.');
+    window.alert("No pending tasks found from past days to migrate.");
   }
 }
 
