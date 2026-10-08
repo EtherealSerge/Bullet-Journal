@@ -14,28 +14,65 @@ const syncBtn = document.getElementById('sync-btn');
 // 2. TOKEN CACHING & HELPER FUNCTIONS
 // ==========================================
 
+let tokenExpiryTimer = null;
+let tokenExpiresAt = 0;
+
+function readStorage(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+function clearToken() {
+  accessToken = null;
+  tokenExpiresAt = 0;
+  clearTimeout(tokenExpiryTimer);
+  try {
+    localStorage.removeItem('bujo_gdrive_token');
+    localStorage.removeItem('bujo_gdrive_token_exp');
+  } catch { /* A storage failure must not prevent using the journal. */ }
+}
+
+function updateSyncStatus() {
+  if (syncRunning) {
+    syncBtn.textContent = 'Syncing...';
+  } else if (!accessToken || Date.now() >= tokenExpiresAt) {
+    syncBtn.textContent = unsyncedChanges ? 'Sign in to sync (changes pending)' : 'Sign in to sync';
+  } else {
+    syncBtn.textContent = unsyncedChanges ? 'Retry sync (changes pending)' : 'Synced to Drive';
+  }
+  // GSI is needed only for signing in, not for a valid cached token.
+  syncBtn.disabled = syncRunning || (!accessToken && !tokenClient);
+}
+
+function armTokenExpiry() {
+  clearTimeout(tokenExpiryTimer);
+  tokenExpiryTimer = setTimeout(() => {
+    clearToken();
+    updateSyncStatus();
+    notify('Google sign-in expired. Local edits are kept; sign in again to sync.');
+  }, Math.max(0, tokenExpiresAt - Date.now()));
+}
+
 function saveTokenToCache(token, expiresInSeconds) {
   accessToken = token;
-  const expirationTime = Date.now() + (expiresInSeconds * 1000) - 60000;
-  localStorage.setItem('bujo_gdrive_token', token);
-  localStorage.setItem('bujo_gdrive_token_exp', expirationTime.toString());
+  tokenExpiresAt = Date.now() + Math.max(1, Number(expiresInSeconds) - 60) * 1000;
+  try {
+    localStorage.setItem('bujo_gdrive_token', token);
+    localStorage.setItem('bujo_gdrive_token_exp', String(tokenExpiresAt));
+  } catch { /* The in-memory token still works for this session. */ }
+  armTokenExpiry();
 }
 
 function loadCachedToken() {
-  const cachedToken = localStorage.getItem('bujo_gdrive_token');
-  const cachedExp = localStorage.getItem('bujo_gdrive_token_exp');
-
-  if (cachedToken && cachedExp) {
-    if (Date.now() < parseInt(cachedExp, 10)) {
-      accessToken = cachedToken;
-      console.log("Valid cached access token restored.");
-      return true;
-    } else {
-      console.log("Cached access token has expired.");
-      localStorage.removeItem('bujo_gdrive_token');
-      localStorage.removeItem('bujo_gdrive_token_exp');
-    }
+  if (accessToken && Date.now() < tokenExpiresAt) return true;
+  const cachedToken = readStorage('bujo_gdrive_token');
+  const expiration = Number(readStorage('bujo_gdrive_token_exp'));
+  if (cachedToken && Number.isFinite(expiration) && Date.now() < expiration) {
+    accessToken = cachedToken;
+    tokenExpiresAt = expiration;
+    armTokenExpiry();
+    return true;
   }
+  clearToken();
   return false;
 }
 
@@ -44,109 +81,121 @@ function loadCachedToken() {
 // ==========================================
 
 function gisLoaded() {
+  if (tokenClient || !window.google?.accounts?.oauth2) return;
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
-    callback: async (tokenResponse) => {
-      if (tokenResponse.error) {
-        console.error('Authentication Error:', tokenResponse);
-        syncBtn.textContent = '❌ Auth Failed';
-        syncBtn.disabled = false;
+    callback: async (response) => {
+      if (response.error || !response.access_token) {
+        notify('Google sign-in failed. Local edits are kept.');
+        updateSyncStatus();
         return;
       }
-      
-      const expiresIn = tokenResponse.expires_in || 3600;
-      saveTokenToCache(tokenResponse.access_token, expiresIn);
-      
-      console.log("Google Authentication successful. Token cached.");
-      syncBtn.textContent = '🔄 Syncing...';
-      syncBtn.disabled = true;
-      
+      saveTokenToCache(response.access_token, response.expires_in || 3600);
       await downloadAndMergeFromDrive();
     },
+    error_callback: () => {
+      notify('Google sign-in was closed or failed. Local edits are kept.');
+      updateSyncStatus();
+    }
   });
-
-  syncBtn.disabled = false;
-
-  if (loadCachedToken()) {
-    syncBtn.textContent = '✅ Connected (Drive)';
-  }
+  updateSyncStatus();
 }
 
 syncBtn.addEventListener('click', () => {
-  if (!tokenClient) return;
-
   if (loadCachedToken()) {
-    syncBtn.textContent = '🔄 Syncing...';
-    syncBtn.disabled = true;
     downloadAndMergeFromDrive();
-  } else {
-    const hasConsented = localStorage.getItem('bujo_gdrive_consented') === 'true';
-    localStorage.setItem('bujo_gdrive_consented', 'true');
-    
+  } else if (tokenClient) {
+    const hasConsented = readStorage('bujo_gdrive_consented') === 'true';
+    try { localStorage.setItem('bujo_gdrive_consented', 'true'); } catch { /* optional */ }
     tokenClient.requestAccessToken({ prompt: hasConsented ? '' : 'consent' });
   }
 });
 
 // ==========================================
-// 4. IMPROVED GOOGLE DRIVE REST OPERATIONS
+// 4. SERIALIZED, MERGE-BEFORE-UPLOAD DRIVE SYNC
 // ==========================================
+let syncRunning = false;
+let syncRequested = false;
+let unsyncedChanges = readStorage('bujo_unsynced') !== 'false';
+let changeGeneration = 0;
+
+async function driveRequest(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...options.headers, Authorization: `Bearer ${accessToken}` }
+  });
+  if (!response.ok) {
+    if (response.status === 401) clearToken();
+    throw new Error(`Drive request failed (${response.status}).`);
+  }
+  return response;
+}
 
 async function downloadAndMergeFromDrive() {
+  if (storageRecoveryRequired) {
+    notify('Saved data needs recovery. Export the damaged save before importing a backup.');
+    return;
+  }
+  syncRequested = true;
+  if (syncRunning) return;
+  if (!loadCachedToken()) {
+    updateSyncStatus();
+    return;
+  }
+  syncRunning = true;
+  updateSyncStatus();
   try {
-    const query = encodeURIComponent("name='bujo_data.json' and trashed=false");
-    const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${query}&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)`;
-    
-    const response = await fetch(listUrl, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("Google Drive List Error:", data);
-      syncBtn.textContent = `❌ Error ${response.status}`;
-      syncBtn.disabled = false;
-      return;
-    }
-    
-    if (data.files && data.files.length > 0) {
-      driveFileId = data.files[0].id;
-      console.log(`Found existing file in appDataFolder. File ID: ${driveFileId}`);
-      
-      const fileUrl = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
-      const fileResponse = await fetch(fileUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      
-      if (!fileResponse.ok) {
-        console.error("Error downloading file contents:", await fileResponse.json());
-        syncBtn.textContent = '❌ Download Error';
-        syncBtn.disabled = false;
-        return;
+    do {
+      syncRequested = false;
+      // Read before EVERY upload, including debounced edits. Merge all duplicate
+      // files too: two devices can both create a file on their first sync.
+      const query = encodeURIComponent("name='bujo_data.json' and trashed=false");
+      let pageToken = '';
+      const files = [];
+      do {
+        const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${query}&orderBy=modifiedTime desc&fields=nextPageToken,files(id)&pageSize=100${pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''}`;
+        const result = await (await driveRequest(url)).json();
+        if (!Array.isArray(result.files) || result.files.some(file => typeof file.id !== 'string')) {
+          throw new Error('Unexpected Drive file list.');
+        }
+        files.push(...result.files);
+        pageToken = result.nextPageToken || '';
+      } while (pageToken);
+      driveFileId = files[0]?.id || null;
+      let cloud = { monthly: {}, daily: {} };
+      for (const file of files) {
+        const response = await driveRequest(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`);
+        cloud = mergeJournalData(cloud, validateJournalData(await response.json()));
       }
-
-      const cloudData = await fileResponse.json();
-      console.log("Downloaded cloud data successfully:", cloudData);
-      
-      journalData = mergeJournalData(journalData, cloudData);
-      localStorage.setItem('bujo_data', JSON.stringify(journalData));
-      
-      await uploadToDrive();
-      
+      if (document.querySelector('.edit-input')) {
+        throw new Error('Finish editing an entry before syncing');
+      }
+      // journalData may have changed while awaiting the network. Merge with the
+      // CURRENT local state, not the state captured at the start of the request.
+      journalData = mergeJournalData(journalData, cloud);
+      if (!persistJournal()) throw new Error('Local save failed; cloud upload stopped.');
       renderAllViews();
-    } else {
-      console.log("No existing file found. Creating new file in appDataFolder...");
-      await uploadToDrive();
-    }
-  } catch (err) {
-    console.error("Network error during Drive sync:", err);
-    syncBtn.textContent = '❌ Sync Failed';
-    syncBtn.disabled = false;
+      const generation = changeGeneration;
+      await uploadToDrive(JSON.stringify(journalData));
+      unsyncedChanges = changeGeneration !== generation;
+      try { localStorage.setItem('bujo_unsynced', String(unsyncedChanges)); } catch { /* status only */ }
+      if (unsyncedChanges) syncRequested = true;
+    } while (syncRequested && loadCachedToken());
+    notify(unsyncedChanges ? 'Changes pending. Sign in to finish syncing.' : 'Journal synced to Drive.');
+  } catch (error) {
+    unsyncedChanges = true;
+    try { localStorage.setItem('bujo_unsynced', 'true'); } catch { /* status only */ }
+    notify(`${error.message} Local edits are kept. Use Sync to retry.`);
+  } finally {
+    syncRunning = false;
+    updateSyncStatus();
   }
 }
 
 function mergeJournalData(local, cloud) {
+  local = validateJournalData(local);
+  cloud = validateJournalData(cloud);
   const merged = { monthly: {}, daily: {} };
 
   function mergeLists(localList = [], cloudList = []) {
@@ -200,95 +249,25 @@ function mergeJournalData(local, cloud) {
   return merged;
 }
 
-async function uploadToDrive() {
-  if (!accessToken) return;
-
+// Private upload step: callers must go through downloadAndMergeFromDrive.
+// This serializes one tab, but is NOT a cross-device transaction. Truly
+// simultaneous writes can still race between download and upload.
+async function uploadToDrive(snapshot) {
   if (driveFileId) {
-    try {
-      const url = `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`;
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': `application/json`
-        },
-        body: JSON.stringify(journalData)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error("Google Drive Update Error Details:", result);
-        syncBtn.textContent = `❌ Update Error ${response.status}`;
-        syncBtn.disabled = false;
-        return;
-      }
-
-      console.log(`Successfully updated file in Drive! ID: ${driveFileId}`);
-      syncBtn.textContent = '✅ Synced to Drive';
-      syncBtn.disabled = false;
-    } catch (err) {
-      console.error("Network upload error:", err);
-      syncBtn.textContent = '❌ Upload Failed';
-      syncBtn.disabled = false;
-    }
+    await driveRequest(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(driveFileId)}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: snapshot
+    });
   } else {
-    try {
-      const metadata = {
-        name: 'bujo_data.json',
-        mimeType: 'application/json',
-        parents: ['appDataFolder']
-      };
-
-      const boundary = 'bujo_multipart_boundary';
-      const delimiter = `\r\n--${boundary}\r\n`;
-      const closeDelimiter = `\r\n--${boundary}--`;
-
-      const multipartBodyParts = [
-        delimiter,
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-        JSON.stringify(metadata),
-        delimiter,
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-        JSON.stringify(journalData),
-        closeDelimiter
-      ];
-
-      const bodyBlob = new Blob(multipartBodyParts, {
-        type: `multipart/related; boundary=${boundary}`
-      });
-
-      const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': `multipart/related; boundary=${boundary}`
-        },
-        body: bodyBlob
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error("Google Drive Create Error Details:", result);
-        syncBtn.textContent = `❌ Create Error ${response.status}`;
-        syncBtn.disabled = false;
-        return;
-      }
-
-      if (result.id) {
-        driveFileId = result.id;
-        console.log(`Successfully created file in Drive! ID: ${driveFileId}`);
-        syncBtn.textContent = '✅ Synced to Drive';
-        syncBtn.disabled = false;
-      }
-    } catch (err) {
-      console.error("Network create error:", err);
-      syncBtn.textContent = '❌ Create Failed';
-      syncBtn.disabled = false;
-    }
+    const boundary = 'bujo_' + crypto.randomUUID();
+    const metadata = { name: 'bujo_data.json', mimeType: 'application/json', parents: ['appDataFolder'] };
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${snapshot}\r\n--${boundary}--\r\n`;
+    const result = await (await driveRequest('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body
+    })).json();
+    if (typeof result.id !== 'string') throw new Error('Drive did not return a file ID.');
+    driveFileId = result.id;
   }
 }
 
@@ -298,10 +277,72 @@ async function uploadToDrive() {
 let currentDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedDateStr = formatDateKey(new Date());
 
-let journalData = JSON.parse(localStorage.getItem('bujo_data')) || {
-  monthly: {},
-  daily: {}    
-};
+let storageRecoveryRequired = false;
+let damagedSave = null;
+
+function notify(message) {
+  document.getElementById('app-status').textContent = message;
+}
+
+function validDateKey(key, monthly) {
+  if (!(monthly ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/).test(key)) return false;
+  const [year, month, day = 1] = key.split('-').map(Number);
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+// Fail closed: malformed cloud/import data must never overwrite a good save.
+// Missing monthly/daily maps are accepted for legacy saves, not bad entries.
+function validateJournalData(data) {
+  const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!isObject(data) || (!Object.hasOwn(data, 'monthly') && !Object.hasOwn(data, 'daily'))) {
+    throw new Error('Not a journal data file.');
+  }
+  const normalized = { monthly: {}, daily: {} };
+  for (const section of ['monthly', 'daily']) {
+    const map = Object.hasOwn(data, section) ? data[section] : {};
+    if (!isObject(map)) throw new Error(`Invalid ${section} data.`);
+    for (const [key, items] of Object.entries(map)) {
+      if (!validDateKey(key, section === 'monthly') || !Array.isArray(items)) {
+        throw new Error(`Invalid date or entry list in ${section}.`);
+      }
+      const ids = new Set();
+      normalized[section][key] = items.map(item => {
+        if (!isObject(item) || typeof item.text !== 'string' ||
+            !['todo', 'done', 'migrated', 'note', 'event'].includes(item.status) ||
+            (item.id !== undefined && (typeof item.id !== 'string' || !item.id)) ||
+            (item.deleted !== undefined && typeof item.deleted !== 'boolean') ||
+            (item.updatedAt !== undefined && (!Number.isSafeInteger(item.updatedAt) || item.updatedAt < 0))) {
+          throw new Error('Invalid journal entry. Nothing was imported or uploaded.');
+        }
+        const identity = item.id || item.text;
+        if (ids.has(identity)) throw new Error('Duplicate entry ID in a date list.');
+        ids.add(identity);
+        return { ...(item.id ? { id: item.id } : {}), text: item.text, status: item.status,
+          deleted: item.deleted || false, updatedAt: item.updatedAt || 0 };
+      });
+    }
+  }
+  return normalized;
+}
+
+function loadJournal() {
+  try {
+    const raw = localStorage.getItem('bujo_data');
+    if (raw === null) return { monthly: {}, daily: {} };
+    damagedSave = raw;
+    const data = validateJournalData(JSON.parse(raw));
+    damagedSave = null;
+    return data;
+  } catch {
+    storageRecoveryRequired = true;
+    notify('Saved data could not be read. The original is untouched. Export the damaged save, then import a valid backup. Edits cannot be saved yet.');
+    return { monthly: {}, daily: {} };
+  }
+}
+
+let journalData = loadJournal();
 
 const monthYearDisplay = document.getElementById('month-year-display');
 const calendarGrid = document.getElementById('calendar-grid');
@@ -344,14 +385,30 @@ function formatFriendlyDate(dateStr) {
 
 let saveDebounceTimer = null;
 
+function persistJournal() {
+  if (storageRecoveryRequired) {
+    notify('Saved data needs recovery. Edits are in memory only; export them before leaving.');
+    return false;
+  }
+  try {
+    localStorage.setItem('bujo_data', JSON.stringify(journalData));
+    return true;
+  } catch {
+    notify('Local save failed (storage may be full or unavailable). Export a backup before leaving.');
+    return false;
+  }
+}
+
 function saveData() {
-  localStorage.setItem('bujo_data', JSON.stringify(journalData));
-  
-  if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
+  changeGeneration++;
+  unsyncedChanges = true;
+  if (!persistJournal()) return;
+  try { localStorage.setItem('bujo_unsynced', 'true'); } catch { /* status only */ }
+  updateSyncStatus();
+  clearTimeout(saveDebounceTimer);
   saveDebounceTimer = setTimeout(() => {
-    if (loadCachedToken()) {
-      uploadToDrive();
-    }
+    if (loadCachedToken()) downloadAndMergeFromDrive();
+    else updateSyncStatus();
   }, 1000);
 }
 
@@ -428,9 +485,9 @@ function migratePendingTasks() {
     saveData();
     // Switch active view to Today so migrated tasks are immediately visible
     goToToday();
-    alert(`Successfully migrated ${migratedCount} pending task(s) to Today!`);
+    notify(`Migrated ${migratedCount} pending task(s) to Today.`);
   } else {
-    alert("No pending tasks found from past days to migrate.");
+    notify('No pending tasks found from past days.');
   }
 }
 
@@ -468,10 +525,12 @@ function setupEditHandler(textSpan, editBtn, leftDiv, item, onSave) {
       isEditing = true;
       editBtn.textContent = '💾';
       editBtn.title = 'Save Changes';
+      editBtn.setAttribute('aria-label', 'Save Changes');
 
       const editInput = document.createElement('textarea');
       editInput.className = 'edit-input';
       editInput.rows = 1;
+      editInput.setAttribute('aria-label', 'Edit entry text');
       editInput.value = item.text;
 
       leftDiv.replaceChild(editInput, textSpan);
@@ -493,11 +552,22 @@ function setupEditHandler(textSpan, editBtn, leftDiv, item, onSave) {
           }
           editBtn.textContent = '✏️';
           editBtn.title = 'Edit Entry';
+      editBtn.setAttribute('aria-label', 'Edit Entry');
           isEditing = false;
         }
       };
 
       editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          leftDiv.replaceChild(textSpan, editInput);
+          editBtn.textContent = '✏️';
+          editBtn.title = 'Edit Entry';
+          editBtn.setAttribute('aria-label', 'Edit Entry');
+          isEditing = false;
+          editBtn.focus();
+          return;
+        }
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           commitEdit();
@@ -516,6 +586,7 @@ function setupEditHandler(textSpan, editBtn, leftDiv, item, onSave) {
           leftDiv.replaceChild(textSpan, editInput);
           editBtn.textContent = '✏️';
           editBtn.title = 'Edit Entry';
+      editBtn.setAttribute('aria-label', 'Edit Entry');
           isEditing = false;
         }
       }
@@ -547,7 +618,8 @@ function renderCalendar() {
   }
 
   for (let day = 1; day <= totalDays; day++) {
-    const dayCell = document.createElement('div');
+    const dayCell = document.createElement('button');
+    dayCell.type = 'button';
     dayCell.classList.add('day-cell');
 
     const dateObj = new Date(year, month, day);
@@ -580,10 +652,14 @@ function renderCalendar() {
       dayCell.classList.add('today');
     }
 
+    dayCell.setAttribute('aria-label', `${formatFriendlyDate(cellDateStr)}${hasEvents ? ', has events' : ''}${hasTasks ? ', has tasks' : ''}`);
+    dayCell.setAttribute('aria-pressed', String(cellDateStr === selectedDateStr));
+    if (cellDateStr === formatDateKey(new Date())) dayCell.setAttribute('aria-current', 'date');
     dayCell.addEventListener('click', () => {
       selectedDateStr = cellDateStr;
       renderCalendar();
       renderDailyTasks();
+      calendarGrid.querySelector('[aria-pressed="true"]')?.focus();
     });
 
     calendarGrid.appendChild(dayCell);
@@ -722,11 +798,13 @@ function renderAtAGlanceEvents() {
       editBtn.className = 'edit-btn';
       editBtn.textContent = '✏️';
       editBtn.title = 'Edit Event';
+      editBtn.setAttribute('aria-label', 'Edit Event');
 
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'delete-btn';
       deleteBtn.textContent = '✕';
       deleteBtn.title = 'Delete Event';
+      deleteBtn.setAttribute('aria-label', 'Delete Event');
       deleteBtn.addEventListener('click', () => {
         event.deleted = true;
         event.updatedAt = Date.now();
@@ -768,6 +846,7 @@ function createTaskElement(item, onToggleSymbol, onDelete, onSaveText) {
   const symbolBtn = document.createElement('button');
   symbolBtn.className = 'symbol-btn';
   symbolBtn.textContent = getSymbol(item.status);
+  symbolBtn.setAttribute('aria-label', `${getStatusLabel(item.status)}: change status of ${item.text}`);
   symbolBtn.addEventListener('click', onToggleSymbol);
 
   const textSpan = document.createElement('span');
@@ -784,11 +863,13 @@ function createTaskElement(item, onToggleSymbol, onDelete, onSaveText) {
   editBtn.className = 'edit-btn';
   editBtn.textContent = '✏️';
   editBtn.title = 'Edit Entry';
+      editBtn.setAttribute('aria-label', 'Edit Entry');
 
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'delete-btn';
   deleteBtn.textContent = '✕';
   deleteBtn.title = 'Delete Entry';
+      deleteBtn.setAttribute('aria-label', 'Delete Entry');
   deleteBtn.addEventListener('click', onDelete);
 
   setupEditHandler(textSpan, editBtn, leftDiv, item, onSaveText);
@@ -1050,13 +1131,15 @@ function searchEntries(query) {
   results.sort((a, b) => b.date.localeCompare(a.date));
 
   searchResults.innerHTML = '';
+  document.getElementById('search-status').textContent = results.length > 50 ? `${results.length} matches. Showing the first 50.` : `${results.length} matches.`;
   if (results.length === 0) {
     searchResults.innerHTML = '<div class="search-empty">No matches found</div>';
     return;
   }
 
   results.slice(0, 50).forEach(result => {
-    const item = document.createElement('div');
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'search-result-item';
     const textDiv = document.createElement('div');
     textDiv.className = 'result-text';
@@ -1080,6 +1163,7 @@ function searchEntries(query) {
 
 function openSearch() {
   searchExpanded.classList.add('open');
+  searchBtn.setAttribute('aria-expanded', 'true');
   searchInput.focus();
   searchInput.value = '';
   searchResults.innerHTML = '';
@@ -1087,6 +1171,7 @@ function openSearch() {
 
 function closeSearch() {
   searchExpanded.classList.remove('open');
+  searchBtn.setAttribute('aria-expanded', 'false');
   searchInput.value = '';
   searchResults.innerHTML = '';
 }
@@ -1113,14 +1198,15 @@ searchInput.addEventListener('input', (e) => {
 searchInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeSearch();
-    searchInput.blur();
+    searchBtn.focus();
   }
 });
 
 document.addEventListener('click', handleOutsideClick);
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === '/' && e.target !== searchInput && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey &&
+      !e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) {
     e.preventDefault();
     openSearch();
   }
@@ -1128,3 +1214,81 @@ document.addEventListener('keydown', (e) => {
 
 // Initial Master Render
 renderAllViews();
+
+// ==========================================
+// 11. BACKUPS AND OFFLINE APP SHELL
+// ==========================================
+function downloadJSON(text, filename) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById('export-btn').addEventListener('click', () => {
+  downloadJSON(JSON.stringify({ format: 'bujo-backup', version: 1,
+    exportedAt: new Date().toISOString(), data: journalData }, null, 2), `bujo-backup-${formatDateKey(new Date())}.json`);
+});
+document.getElementById('recovery-btn').addEventListener('click', () => {
+  if (damagedSave !== null) downloadJSON(damagedSave, 'bujo-damaged-save.json');
+  else notify('No damaged save is available to export.');
+});
+document.getElementById('recovery-btn').hidden = damagedSave === null;
+
+const importInput = document.getElementById('import-file');
+document.getElementById('import-btn').addEventListener('click', () => importInput.click());
+importInput.addEventListener('change', async () => {
+  const file = importInput.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 10 * 1024 * 1024) throw new Error('Backup exceeds the 10 MB import limit.');
+    const parsed = JSON.parse(await file.text());
+    if (parsed?.format === 'bujo-backup' && parsed.version !== 1) throw new Error('Unsupported backup version.');
+    const imported = validateJournalData(parsed?.format === 'bujo-backup' ? parsed.data : parsed);
+    const message = storageRecoveryRequired
+      ? 'Have you exported the damaged save? Importing will replace it with a valid merged journal. Continue?'
+      : 'Merge this backup with the journal? Newer entries win; deleted entries stay deleted. Export a backup first if you may need to undo this.';
+    if (!window.confirm(message)) return;
+    const merged = mergeJournalData(journalData, imported);
+    // Persist BEFORE replacing memory state. A quota error leaves both untouched.
+    localStorage.setItem('bujo_data', JSON.stringify(merged));
+    journalData = merged;
+    storageRecoveryRequired = false;
+    damagedSave = null;
+    document.getElementById('recovery-btn').hidden = true;
+    saveData();
+    renderAllViews();
+    notify('Backup merged and saved locally.');
+  } catch (error) {
+    notify(`Import failed: ${error.message} Existing data is unchanged.`);
+  } finally {
+    importInput.value = '';
+  }
+});
+
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      notify('Offline setup failed. Keep a JSON backup; reload online to retry.');
+    });
+  });
+}
+window.addEventListener('online', () => {
+  if (loadCachedToken()) downloadAndMergeFromDrive();
+  else updateSyncStatus();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    renderCalendar();
+    loadCachedToken();
+    updateSyncStatus();
+  }
+});
+// script.js loads before the async Google script, avoiding the old onload race.
+gisLoaded();
+if (loadCachedToken()) downloadAndMergeFromDrive();
+else updateSyncStatus();

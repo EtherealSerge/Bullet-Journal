@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#4a6fa5">
   <title>Minimalist Bullet Journal</title>
-  <link type="image/png" sizes="96x96" rel="icon" href="https://img.icons8.com/ios11/96/journal.png">
-  <link rel="apple-touch-icon" href="https://img.icons8.com/ios11/192/journal.png">
+  <link type="image/png" sizes="192x192" rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -21,9 +21,10 @@
         <h1>📓 Bullet Journal</h1>
         <div class="header-actions">
           <div class="search-container" id="search-container">
-            <button id="search-btn" class="search-btn" aria-label="Search entries" title="Search (click or press /)">🔍</button>
+            <button id="search-btn" aria-expanded="false" aria-controls="search-expanded" class="search-btn" aria-label="Search entries" title="Search (click or press /)">🔍</button>
             <div class="search-expanded" id="search-expanded">
               <input type="text" id="search-input" class="search-input" placeholder="Search all entries..." aria-label="Search entries">
+              <p id="search-status" class="sr-only" role="status"></p>
               <div class="search-results" id="search-results"></div>
             </div>
           </div>
@@ -31,11 +32,18 @@
         </div>
       </div>
       <div class="quick-note-bar" id="quick-note-bar">
-        <span class="quick-note-trigger" id="quick-note-trigger">+</span>
+        <button type="button" class="quick-note-trigger" id="quick-note-trigger" aria-label="Add quick note">+</button>
         <div class="quick-note-input-wrap">
-          <input type="text" id="quick-note-input" placeholder="Quick note..." autocomplete="off">
+          <input type="text" id="quick-note-input" aria-label="Quick note" placeholder="Quick note..." autocomplete="off">
         </div>
       </div>
+      <div class="backup-actions" aria-label="Journal backups">
+        <button type="button" id="export-btn">Export backup</button>
+        <button type="button" id="import-btn">Import backup</button>
+        <button type="button" id="recovery-btn" hidden>Export damaged save</button>
+        <input type="file" id="import-file" accept=".json,application/json" hidden>
+      </div>
+      <p id="app-status" class="app-status" role="status" aria-live="polite"></p>
     </header>
 
     <div class="layout-grid">
@@ -64,7 +72,7 @@
           <select id="glance-day-select" class="glance-select" aria-label="Select Day">
             <!-- Dynamically populated 1 to 28/30/31 -->
           </select>
-          <textarea id="glance-input" rows="1" placeholder="New event title..." required autocomplete="off"></textarea>
+          <textarea id="glance-input" aria-label="Event title" rows="1" placeholder="New event title..." required autocomplete="off"></textarea>
           <button type="submit">Add Event</button>
         </form>
         <ul id="glance-list" class="task-list"></ul>
@@ -74,7 +82,7 @@
          <!-- Monthly Goals & Tasks -->
         <h3>Monthly Goals and Tasks</h3>
         <form id="monthly-form" class="task-form">
-          <textarea id="monthly-input" rows="1" placeholder="New monthly task or goal..." required autocomplete="off"></textarea>
+          <textarea id="monthly-input" aria-label="Monthly task or goal" rows="1" placeholder="New monthly task or goal..." required autocomplete="off"></textarea>
           <button type="submit">Add Task</button>
         </form>
         <ul id="monthly-list" class="task-list"></ul>
@@ -95,7 +103,7 @@
         <button id="migrate-btn" class="migrate-btn">➡️ Migrate Pending Tasks</button>
 
         <form id="daily-form" class="task-form">
-          <textarea id="daily-input" rows="1" placeholder="New daily entry..." required autocomplete="off"></textarea>
+          <textarea id="daily-input" aria-label="Daily entry" rows="1" placeholder="New daily entry..." required autocomplete="off"></textarea>
           <button type="submit">Add Entry</button>
         </form>
 
@@ -114,7 +122,7 @@
   </div>
 
   <!-- Google Identity Services Library -->
-  <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
   <script src="script.js"></script>
+  <script async src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
 </body>
 </html>
