@@ -484,6 +484,7 @@ body {
 }
 
 .task-form textarea {
+  min-width: 0;
   flex: 1;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
@@ -524,6 +525,9 @@ body {
   outline: none;
   cursor: pointer;
   height: 40px;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 45%;
 }
 
 .event-date-badge {
@@ -667,8 +671,11 @@ body {
     flex-direction: column;
   }
 
-  .task-form button {
+  .task-form button,
+  .task-form textarea,
+  .glance-select {
     width: 100%;
+    max-width: none;
   }
 
   .day-cell {

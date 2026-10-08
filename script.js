@@ -163,13 +163,17 @@ function mergeJournalData(local, cloud) {
         itemMap.set(key, { ...cloudItem });
       } else {
         const localItem = itemMap.get(key);
+        // Newest edit wins. Items without updatedAt (older data) count as 0,
+        // so a stamped edit always beats an unstamped copy.
+        const localTime = localItem.updatedAt || 0;
+        const cloudTime = cloudItem.updatedAt || 0;
+        const winner = cloudTime > localTime ? cloudItem : localItem;
         const isDeleted = Boolean(localItem.deleted || cloudItem.deleted);
 
         itemMap.set(key, {
-          ...localItem,
-          text: cloudItem.text || localItem.text,
-          status: localItem.status === 'migrated' ? 'migrated' : (cloudItem.status || localItem.status),
-          deleted: isDeleted
+          ...winner,
+          deleted: isDeleted,
+          updatedAt: Math.max(localTime, cloudTime)
         });
       }
     });
@@ -291,7 +295,7 @@ async function uploadToDrive() {
 // ==========================================
 // 5. CORE APPLICATION STATE & HELPERS
 // ==========================================
-let currentDate = new Date();
+let currentDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedDateStr = formatDateKey(new Date());
 
 let journalData = JSON.parse(localStorage.getItem('bujo_data')) || {
@@ -403,13 +407,15 @@ function migratePendingTasks() {
         if (task.status === 'todo' && !task.deleted) {
           // 1. Mark original past task as 'migrated' (>)
           task.status = 'migrated';
+          task.updatedAt = Date.now();
 
           // 2. Add copy to Today's log as 'todo' (•)
           journalData.daily[todayKey].push({
             id: crypto.randomUUID(),
             text: task.text,
             status: 'todo',
-            deleted: false
+            deleted: false,
+            updatedAt: Date.now()
           });
 
           migratedCount++;
@@ -478,6 +484,7 @@ function setupEditHandler(textSpan, editBtn, leftDiv, item, onSave) {
         const newText = editInput.value.trim();
         if (newText && newText !== item.text) {
           item.text = newText;
+          item.updatedAt = Date.now();
           onSave();
         } else {
           textSpan.textContent = item.text;
@@ -502,6 +509,7 @@ function setupEditHandler(textSpan, editBtn, leftDiv, item, onSave) {
         const newText = editInput.value.trim();
         if (newText && newText !== item.text) {
           item.text = newText;
+          item.updatedAt = Date.now();
           onSave();
         } else {
           textSpan.textContent = item.text;
@@ -594,11 +602,13 @@ function renderMonthlyTasks() {
       task,
       () => {
         task.status = getNextStatus(task.status);
+        task.updatedAt = Date.now();
         saveData();
         renderMonthlyTasks();
       },
       () => {
         task.deleted = true;
+        task.updatedAt = Date.now();
         saveData();
         renderMonthlyTasks();
       },
@@ -623,13 +633,17 @@ function renderDailyTasks() {
       task,
       () => {
         task.status = getNextStatus(task.status);
+        task.updatedAt = Date.now();
         saveData();
+        renderCalendar();
         renderDailyTasks();
         renderAtAGlanceEvents();
       },
       () => {
         task.deleted = true;
+        task.updatedAt = Date.now();
         saveData();
+        renderCalendar();
         renderDailyTasks();
         renderAtAGlanceEvents();
       },
@@ -715,6 +729,7 @@ function renderAtAGlanceEvents() {
       deleteBtn.title = 'Delete Event';
       deleteBtn.addEventListener('click', () => {
         event.deleted = true;
+        event.updatedAt = Date.now();
         saveData();
         renderAllViews();
       });
@@ -788,7 +803,8 @@ function createTaskElement(item, onToggleSymbol, onDelete, onSaveText) {
 }
 
 function changeMonth(delta) {
-  currentDate.setMonth(currentDate.getMonth() + delta);
+  // Anchor to the 1st so e.g. Jan 31 + 1 month can't overflow into March.
+  currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + delta, 1);
   
   const isCurrentMonth = currentDate.getFullYear() === new Date().getFullYear() &&
                          currentDate.getMonth() === new Date().getMonth();
@@ -847,7 +863,7 @@ monthlyForm.addEventListener('submit', (e) => {
     journalData.monthly[monthKey] = [];
   }
 
-  journalData.monthly[monthKey].push({ id: crypto.randomUUID(), text: text, status: 'todo', deleted: false });
+  journalData.monthly[monthKey].push({ id: crypto.randomUUID(), text: text, status: 'todo', deleted: false, updatedAt: Date.now() });
   saveData();
   resetTextareaHeight(monthlyInput);
   renderMonthlyTasks();
@@ -862,9 +878,10 @@ dailyForm.addEventListener('submit', (e) => {
     journalData.daily[selectedDateStr] = [];
   }
 
-  journalData.daily[selectedDateStr].push({ id: crypto.randomUUID(), text: text, status: 'todo', deleted: false });
+  journalData.daily[selectedDateStr].push({ id: crypto.randomUUID(), text: text, status: 'todo', deleted: false, updatedAt: Date.now() });
   saveData();
   resetTextareaHeight(dailyInput);
+  renderCalendar();
   renderDailyTasks();
   renderAtAGlanceEvents();
 });
@@ -883,10 +900,11 @@ glanceForm.addEventListener('submit', (e) => {
     journalData.daily[targetDateStr] = [];
   }
 
-  journalData.daily[targetDateStr].push({ id: crypto.randomUUID(), text: text, status: 'event', deleted: false });
+  journalData.daily[targetDateStr].push({ id: crypto.randomUUID(), text: text, status: 'event', deleted: false, updatedAt: Date.now() });
   
   saveData();
   resetTextareaHeight(glanceInput);
+  renderCalendar();
   renderDailyTasks();
   renderAtAGlanceEvents();
 });
@@ -913,7 +931,7 @@ quickNoteInput.addEventListener('keydown', (e) => {
       if (!journalData.daily[todayKey]) {
         journalData.daily[todayKey] = [];
       }
-      journalData.daily[todayKey].push({ id: crypto.randomUUID(), text, status: 'note', deleted: false });
+      journalData.daily[todayKey].push({ id: crypto.randomUUID(), text, status: 'note', deleted: false, updatedAt: Date.now() });
       saveData();
       quickNoteInput.value = '';
       quickNoteBar.classList.remove('open');
@@ -941,6 +959,27 @@ function highlightMatch(text, query) {
   if (!query) return text;
   const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
   return text.replace(regex, '<mark class="result-highlight">$1</mark>');
+}
+
+// Builds a safe DOM fragment: entry text is inserted as text nodes, never HTML.
+function buildHighlightedNodes(text, query) {
+  const frag = document.createDocumentFragment();
+  if (!query) {
+    frag.appendChild(document.createTextNode(text));
+    return frag;
+  }
+  const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
+  text.split(regex).forEach((part, i) => {
+    if (i % 2 === 1) {
+      const mark = document.createElement('mark');
+      mark.className = 'result-highlight';
+      mark.textContent = part;
+      frag.appendChild(mark);
+    } else if (part) {
+      frag.appendChild(document.createTextNode(part));
+    }
+  });
+  return frag;
 }
 
 function escapeRegExp(string) {
@@ -1019,13 +1058,21 @@ function searchEntries(query) {
   results.slice(0, 50).forEach(result => {
     const item = document.createElement('div');
     item.className = 'search-result-item';
-    item.innerHTML = `
-      <div class="result-text">${highlightMatch(result.text, normalizedQuery)}</div>
-      <div class="result-meta">
-        <span class="result-date">${formatResultDate(result.date)}</span>
-        <span class="result-type">${result.type}</span>
-      </div>
-    `;
+    const textDiv = document.createElement('div');
+    textDiv.className = 'result-text';
+    textDiv.appendChild(buildHighlightedNodes(result.text, normalizedQuery));
+
+    const meta = document.createElement('div');
+    meta.className = 'result-meta';
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'result-date';
+    dateSpan.textContent = formatResultDate(result.date);
+    const typeSpan = document.createElement('span');
+    typeSpan.className = 'result-type';
+    typeSpan.textContent = result.type;
+    meta.append(dateSpan, typeSpan);
+
+    item.append(textDiv, meta);
     item.addEventListener('click', result.onSelect);
     searchResults.appendChild(item);
   });
